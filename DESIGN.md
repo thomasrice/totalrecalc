@@ -1,6 +1,6 @@
-# Design
+# Cellwake design
 
-_The design of the viewer. Revised after two independent design reviews._
+_How Cellwake should look and behave. Revised after two independent design reviews._
 
 ## What the app is for
 
@@ -51,13 +51,13 @@ Everything else (looking like a well-made financial model, fast navigation, form
 
 - **Fidelity to the workbook**: number formats (separators, decimals, percentages, bracketed negatives, format colours), alignment, bold, italic, indentation, borders, column widths, row heights, wrapping, merged cells, hidden rows and columns, and cell comments (a small corner mark; hover shows the comment).
 - **Frozen panes** come from the workbook. If it has none, the app infers a header row and label column from the layout and shows a small "Freeze: inferred" control to override.
-- **Colours, mapped to the theme as pairs.** A fill and its text colour are resolved together:
+- **Colours.** In the default light theme, fills and text colours appear exactly as the file defines them. In the optional dark theme, a fill and its text colour are mapped together:
   - A strong fill with light text (the navy header rows) stays solid, darkened slightly in dark mode.
   - A light fill with dark text becomes a low-opacity tint of its hue.
   - Input-yellow fills become a muted olive so they never resemble the change colour.
   - Text colours keep their meaning: blue `#7FB2FF`, black → primary text `#E6E8EB`, green `#6FCF97`. The app never infers a cell's type from its colour.
   - Red is reserved for errors and removals; negative numbers follow the file's format (brackets) in normal text.
-- **Typography.** A UI sans for chrome and labels, and a figure face whose *default* digits are tabular (egui cannot switch OpenType features, so the font file itself must carry tabular digits by default). Numbers at 13px on 24px rows, labels 13px, headers 12px semibold. Fonts are embedded. Confirming text quality at 100% and 125% Windows scaling is the first prototype gate.
+- **Typography.** Inter (embedded) for chrome, labels and numbers, with `font-variant-numeric: tabular-nums` so columns of digits align; the webview renders text with each platform's native rasteriser. Numbers at 13px on 24px rows, labels 13px, headers 12px semibold.
 - **Structure made visible.** Annual columns get a slightly heavier left rule; quarter columns are a touch quieter; the actual/forecast boundary (from the `A`/`E` suffix in headers, or a change in input styling) is a fine vertical accent line labelled `forecast →` in the header.
 - **Interaction.** Click, Shift-click and drag to select ranges (with auto-scroll); visible scrollbars; mouse-wheel and Shift-wheel scrolling; `Ctrl+G` go to address or label; `Esc` clears selection or closes the panel.
 
@@ -143,7 +143,7 @@ Every version is recalculated with the built-in engine. Each value is one of: **
 
 ## Starting the app
 
-`sheetwatch path/to/model.xlsx`, a file association, or dragging a file onto the window or the `.exe`. With no file: a quiet window with an Open button and a drop zone. Window title: `model.xlsx — sheetwatch`.
+`cellwake path/to/model.xlsx`, a file association, or dragging a file onto the window or the `.exe`. With no file: a quiet window with an Open button and a drop zone. Window title: `model.xlsx — Cellwake`.
 
 ## Keyboard
 
@@ -170,10 +170,22 @@ Vim movement keys (`h j k l`, `g`/`G`) work as well but are not advertised.
 
 ## Visual language
 
-- **Dark (default)**: background `#0F1115`, grid surface `#14171C`, hairlines `#232831`, primary text `#E6E8EB`, muted `#8A93A0`, accent blue `#5B9DFF` for selection and focus. Semantic colours: amber `#F2B34B` change, violet `#B48CFF` formula edit, red `#FF6B6B` errors and removals. No other saturated colour in the chrome.
-- **Light**: workbook-faithful. Fills and font colours appear as in Excel; chrome is off-white `#FBFBFA` with `#E7E7E4` hairlines and `#1C1F24` text.
+- **Light (default)**: workbook-faithful, as in Excel. Fills and font colours appear exactly as the file defines them on a white grid; chrome is off-white `#FBFBFA` with `#E7E7E4` hairlines and `#1C1F24` text; accent blue `#2F6FEB` for selection and focus. Semantic colours darkened for contrast on white: amber `#C98A12` change (tint `#FFF1D6`), violet `#7C4DDB` formula edit, red `#D23B3B` errors and removals.
+- **Dark (optional)**: background `#0F1115`, grid surface `#14171C`, hairlines `#232831`, primary text `#E6E8EB`, muted `#8A93A0`, accent `#5B9DFF`, amber `#F2B34B`, violet `#B48CFF`, red `#FF6B6B`. Workbook colours are mapped as pairs as described under The grid. No other saturated colour in the chrome.
 - **Motion**: the update pulse only. Panels open instantly.
 - **One density**: 24px rows at 100%; zoom covers the rest.
+
+## Delight
+
+Small touches that make the app feel made with care, none of which get in the way:
+
+- **The wake.** When an update lands, its changed cells light up in reading order as a quick ripple (about 600ms in total, each cell a soft pulse), like a wake spreading across the grid. With many changes the ripple is capped and the rest pulse together. Reduced-motion settings turn it into a single fade.
+- **Change ticks on the scrollbars.** Both scrollbars carry tiny amber marks where changes sit, so you can see that something moved far below or to the right.
+- **The live dot** in the top bar breathes slowly while watching and turns into a crisp pause glyph when paused.
+- **Command palette** (`Ctrl+K`): every action, sheet and row label in one searchable list.
+- **Copy feedback**: a small toast shows exactly what went to the clipboard.
+- **A first-run window** with the Cellwake mark and a drop zone that glows when a file is dragged over it.
+- **Remembered state** per file: last sheet, scroll position, collapsed years and panel widths.
 
 ## Out of scope for version one
 
