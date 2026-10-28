@@ -108,6 +108,7 @@ On Arch: `webkit2gtk-4.1`, `librsvg` and `patchelf`.
 pnpm install
 pnpm tauri dev            # run with hot reload
 pnpm tauri build          # release build and installers
+scripts/install-local     # Linux: put the build on your PATH, with a launcher entry
 ```
 
 The UI also runs in a plain browser against JSON fixtures, which is handy for working on the interface: `pnpm dev` and open `http://localhost:1420/?fixture=demo`. The fixtures are made by `totalrecalc-dump`, a small command that loads one or two workbooks and prints exactly what the window would receive; see [fixtures/README.md](fixtures/README.md).

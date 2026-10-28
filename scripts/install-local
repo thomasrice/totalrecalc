@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Install a locally built Total Recalc for the current user on Linux:
+# the binary in ~/.local/bin, a launcher entry, and "Open with" for .xlsx.
+# Run after `pnpm tauri build` (or `pnpm tauri build --no-bundle`).
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")/.." && pwd)"
+binary="$here/src-tauri/target/release/totalrecalc"
+icon="$here/src-tauri/icons/128x128@2x.png"
+bin_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
+
+[ -x "$binary" ] || { echo "No build found at $binary; run 'pnpm tauri build' first." >&2; exit 1; }
+
+mkdir -p "$bin_dir" "$apps" "$icons"
+# Copy rather than link, so cleaning or rebuilding never breaks the installed app.
+install -m 755 "$binary" "$bin_dir/totalrecalc"
+install -m 644 "$icon" "$icons/totalrecalc.png"
+cat > "$apps/totalrecalc.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Total Recalc
+GenericName=Spreadsheet viewer
+Comment=Watch your AI agent edit Excel, live
+Exec=$bin_dir/totalrecalc %f
+Icon=totalrecalc
+Terminal=false
+Categories=Office;Spreadsheet;Viewer;
+MimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel.sheet.macroEnabled.12;
+DESKTOP
+command -v update-desktop-database >/dev/null && update-desktop-database "$apps" || true
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+
+echo "Installed $bin_dir/totalrecalc and a launcher entry."
+case ":$PATH:" in *":$bin_dir:"*) ;; *) echo "Note: $bin_dir is not on your PATH." ;; esac
