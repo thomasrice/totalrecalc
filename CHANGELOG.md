@@ -11,4 +11,4 @@ First release.
 - Forecast boundary drawn where actual periods give way to estimates.
 - Recalculation by IronCalc, with Excel's saved values used (and marked) where the engine cannot evaluate a formula faithfully.
 - Light (workbook-faithful) and dark themes.
-- Builds for Linux (AppImage, `.deb`) and Windows (installer, portable `.exe`).
+- Builds for Linux (AppImage, `.deb`) and Windows (installer, portable `.exe`), plus an unsigned, not yet tested macOS `.dmg` for Apple Silicon and Intel.

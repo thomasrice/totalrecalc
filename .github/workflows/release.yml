@@ -28,6 +28,10 @@ jobs:
           # The oldest supported Ubuntu, so the AppImage and .deb run on older glibc.
           - os: ubuntu-22.04
           - os: windows-latest
+          # One unsigned .dmg for Apple Silicon and Intel.
+          - os: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -53,6 +57,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -65,6 +71,7 @@ jobs:
           releaseName: Total Recalc ${{ env.TAG }}
           releaseDraft: true
           prerelease: ${{ contains(env.TAG, '-') }}
+          args: ${{ matrix.args }}
       - name: Upload stable names (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -84,6 +91,15 @@ jobs:
           mkdir -p stable
           cp src-tauri/target/release/bundle/nsis/*-setup.exe stable/totalrecalc-windows-x64-setup.exe
           cp src-tauri/target/release/totalrecalc.exe stable/totalrecalc.exe
+          gh release upload "$TAG" stable/* --clobber
+      - name: Upload stable names (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p stable
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg stable/totalrecalc-macos-universal.dmg
           gh release upload "$TAG" stable/* --clobber
 
   publish:
