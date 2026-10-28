@@ -12,7 +12,7 @@ A fast, read-only viewer for Excel workbooks that refreshes itself the moment th
 </p>
 
 <p align="center">
-  <img src="docs/wake.gif" alt="An agent edits the model twice; Total Recalc follows each update and ripples across the cells that changed" width="100%" />
+  <img src="docs/demo.gif" alt="Claude Code rolls in a quarter's actuals, cuts a growth rate and lifts a margin in a demo model; beside it Total Recalc shows each change as it lands, down to the value per share" width="100%" />
 </p>
 
 ---
