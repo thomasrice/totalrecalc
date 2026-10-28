@@ -611,6 +611,7 @@ export class App {
 
   private selectTimer = 0;
   private selectRaf = 0;
+  private statusRest = "";
 
   onSelect(_s: Selection) {
     this.inspection = null;
@@ -817,7 +818,7 @@ export class App {
     const d = this.data;
     const el = $("#status");
     if (!i || !d) {
-      el.innerHTML = "";
+      el.innerHTML = this.statusRest = "";
       return;
     }
     const cells = this.selectionCells().flat();
@@ -837,8 +838,7 @@ export class App {
       : c.cached || c.unavailable
         ? `<button class="calc warn" data-act="cached" title="Formulas Total Recalc's engine cannot evaluate faithfully show the value Excel saved. Click to step through them.">${c.cached ? `${c.cached.toLocaleString()} from file cache` : ""}${c.cached && c.unavailable ? " · " : ""}${c.unavailable ? `${c.unavailable.toLocaleString()} unavailable` : ""}</button>`
         : `<span class="calc ok">${icon("check")} All values calculated</span>`;
-    el.innerHTML = `
-      <span class="addr">${esc(addr)}</span>
+    const rest = `
       ${sel}
       <div class="spacer"></div>
       ${c.errors ? `<span class="errs" title="Cells showing an error">${c.errors} error${c.errors === 1 ? "" : "s"}</span>` : ""}
@@ -846,6 +846,14 @@ export class App {
       ${d.meta.frozenInferred ? `<span class="muted" title="The file has no frozen panes; Total Recalc froze the header row and label columns it found">Freeze: inferred</span>` : ""}
       <span class="muted">${Math.round(this.grid.getZoom() * 100)}%</span>
       <button class="link" data-act="help">? Shortcuts</button>`;
+    // Moving the selection usually changes only the address: update just that.
+    const addrEl = el.querySelector<HTMLElement>(".addr");
+    if (rest === this.statusRest && addrEl) {
+      addrEl.textContent = addr;
+      return;
+    }
+    this.statusRest = rest;
+    el.innerHTML = `<span class="addr">${esc(addr)}</span>${rest}`;
     el.onclick = (e) => {
       const t = e.target as HTMLElement;
       if (t.closest("[data-act=help]")) showHelp(this);

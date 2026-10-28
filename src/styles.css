@@ -352,6 +352,7 @@ button.primary:hover {
 /* ----------------------------------------------------------- peek strip */
 
 #peek {
+  contain: layout paint;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -693,6 +694,8 @@ body.panel-open #body {
   position: absolute;
   overflow: hidden;
   pointer-events: none;
+  /* A change inside one pane never makes the webview re-lay-out the others. */
+  contain: layout paint;
 }
 .grid-inner {
   position: absolute;
@@ -812,8 +815,18 @@ body.panel-open #body {
   background: transparent;
   border: 1px solid var(--faint);
 }
+/* Comment corners, change bars and tints are background layers, which paint
+   far more cheaply than inset shadows, over the workbook's own fill. */
 .c.has-comment {
-  background-image: linear-gradient(225deg, var(--red) 0 5px, transparent 5px);
+  --mark: linear-gradient(225deg, var(--red) 0 5px, transparent 5px);
+}
+.c.has-comment,
+.c.k-edit,
+.c.k-added,
+.c.k-cleared,
+.c.k-formula,
+.c.k-result {
+  background-image: var(--mark, none), var(--bar, none), var(--tint, none);
 }
 
 /* Changes: a bar for edits, a tint for everything. */
@@ -821,13 +834,16 @@ body.panel-open #body {
 .c.k-edit,
 .c.k-added,
 .c.k-cleared {
-  box-shadow: inset 3px 0 0 var(--amber-bar), inset 0 0 0 1px var(--amber-bar), inset 0 0 0 9999px var(--amber-tint);
+  --bar: linear-gradient(90deg, var(--amber-bar) 0 3px, transparent 3px);
+  --tint: linear-gradient(var(--amber-tint), var(--amber-tint));
+  box-shadow: inset 0 0 0 1px var(--amber-bar);
 }
 .c.k-formula {
-  box-shadow: inset 3px 0 0 var(--violet), inset 0 0 0 1px color-mix(in srgb, var(--violet) 40%, transparent);
+  --bar: linear-gradient(90deg, var(--violet) 0 3px, transparent 3px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--violet) 40%, transparent);
 }
 .c.k-result {
-  box-shadow: inset 0 0 0 9999px var(--amber-tint-faint);
+  --tint: linear-gradient(var(--amber-tint-faint), var(--amber-tint-faint));
 }
 .c.k-cleared::after {
   content: "cleared";
@@ -869,13 +885,18 @@ body.panel-open #body {
 
 .sel-range {
   position: absolute;
+  left: 0;
+  top: 0;
   background: var(--accent-soft);
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
 .sel-active {
   position: absolute;
-  box-shadow: inset 0 0 0 2px var(--accent);
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
   border-radius: 1px;
   z-index: 4;
 }
@@ -1318,6 +1339,7 @@ body.panel-open #body {
 /* --------------------------------------------------------------- status */
 
 #status {
+  contain: layout paint;
   display: flex;
   align-items: center;
   gap: 16px;

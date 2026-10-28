@@ -40,6 +40,12 @@ interface Region {
   cells: HTMLDivElement;
   overlay: HTMLDivElement;
   rendered: { r0: number; r1: number; c0: number; c1: number } | null;
+  /** Last geometry written, so unchanged panes aren't touched. */
+  css: string;
+  transform: string;
+  /** The selection's two boxes, moved rather than recreated. */
+  range: HTMLDivElement;
+  active: HTMLDivElement;
 }
 
 
@@ -87,6 +93,7 @@ export class Grid {
   private pulseUntil = 0;
   private dragging = false;
   private raf = 0;
+  private frozenVars = "";
 
   constructor(private events: GridEvents) {
     this.el = document.createElement("div");
@@ -108,10 +115,17 @@ export class Grid {
       const cells = document.createElement("div");
       const overlay = document.createElement("div");
       overlay.className = "grid-overlay";
+      const range = document.createElement("div");
+      range.className = "sel-range";
+      const active = document.createElement("div");
+      active.className = "sel-active";
+      // Shown by renderSelection, and only in the four body panes.
+      range.style.display = active.style.display = "none";
+      overlay.append(range, active);
       inner.append(cells, overlay);
       pane.appendChild(inner);
       this.el.appendChild(pane);
-      this.regions[name] = { pane, inner, cells, overlay, rendered: null };
+      this.regions[name] = { pane, inner, cells, overlay, rendered: null, css: "", transform: "", range, active };
     }
     this.ticksY = document.createElement("div");
     this.ticksY.className = "ticks ticks-y";
@@ -307,8 +321,10 @@ export class Grid {
 
     const place = (name: string, left: number, top: number, width: number, height: number, tx: number, ty: number) => {
       const reg = this.regions[name];
-      reg.pane.style.cssText = `left:${left}px;top:${top}px;width:${Math.max(0, width)}px;height:${Math.max(0, height)}px`;
-      reg.inner.style.transform = `translate(${tx}px,${ty}px)`;
+      const css = `left:${left}px;top:${top}px;width:${Math.max(0, width)}px;height:${Math.max(0, height)}px`;
+      if (css !== reg.css) reg.pane.style.cssText = reg.css = css;
+      const transform = `translate(${tx}px,${ty}px)`;
+      if (transform !== reg.transform) reg.inner.style.transform = reg.transform = transform;
       return reg;
     };
     const scrollW = Math.min(W - ROW_HEAD_W - fw, totalW - fw);
@@ -346,19 +362,31 @@ export class Grid {
     place("main", ROW_HEAD_W + fw, hh + fh, scrollW, scrollH, -fw - sl, -fh - st);
     body("main", [r0, r1], [c0, c1]);
 
-    // Column letters.
-    place("hdrFrozen", ROW_HEAD_W, 0, fw, LETTER_H, 0, 0).cells.innerHTML = this.letterHtml(0, this.frozenC);
-    place("hdrScroll", ROW_HEAD_W + fw, 0, scrollW, LETTER_H, -fw - sl, 0).cells.innerHTML = this.letterHtml(c0, c1);
+    // Column letters and row numbers: rebuilt only when their range changes;
+    // a moving selection just restyles them (markHeaders).
+    const heads = (reg: Region, r0: number, r1: number, c0: number, c1: number, html: () => string) => {
+      const ren = reg.rendered;
+      if (ren && ren.r0 === r0 && ren.r1 === r1 && ren.c0 === c0 && ren.c1 === c1) return;
+      reg.rendered = { r0, r1, c0, c1 };
+      reg.cells.innerHTML = html();
+    };
+    heads(place("hdrFrozen", ROW_HEAD_W, 0, fw, LETTER_H, 0, 0), 0, 0, 0, this.frozenC, () => this.letterHtml(0, this.frozenC));
+    heads(place("hdrScroll", ROW_HEAD_W + fw, 0, scrollW, LETTER_H, -fw - sl, 0), 0, 0, c0, c1, () => this.letterHtml(c0, c1));
 
     // Row numbers.
-    place("rowFrozen", 0, hh, ROW_HEAD_W, fh, 0, 0).cells.innerHTML = this.rowNumHtml(0, this.frozenR);
-    place("rowScroll", 0, hh + fh, ROW_HEAD_W, scrollH, 0, -fh - st).cells.innerHTML = this.rowNumHtml(r0, r1);
+    heads(place("rowFrozen", 0, hh, ROW_HEAD_W, fh, 0, 0), 0, this.frozenR, 0, 0, () => this.rowNumHtml(0, this.frozenR));
+    heads(place("rowScroll", 0, hh + fh, ROW_HEAD_W, scrollH, 0, -fh - st), r0, r1, 0, 0, () => this.rowNumHtml(r0, r1));
     place("box", 0, 0, ROW_HEAD_W, hh, 0, 0);
 
     this.el.classList.toggle("has-frozen-cols", this.frozenC > 0);
     this.el.classList.toggle("has-frozen-rows", this.frozenR > 0);
-    this.el.style.setProperty("--frozen-x", `${ROW_HEAD_W + fw}px`);
-    this.el.style.setProperty("--frozen-y", `${hh + fh}px`);
+    // Custom properties on the grid restyle every cell, so only when they change.
+    const frozen = `${ROW_HEAD_W + fw}px ${hh + fh}px`;
+    if (frozen !== this.frozenVars) {
+      this.frozenVars = frozen;
+      this.el.style.setProperty("--frozen-x", `${ROW_HEAD_W + fw}px`);
+      this.el.style.setProperty("--frozen-y", `${hh + fh}px`);
+    }
     this.renderSelection();
     if (this.pulses.size && performance.now() > this.pulseUntil) this.pulses.clear();
   }
@@ -454,7 +482,7 @@ export class Grid {
       const on = ci >= s0 && ci <= s1 ? " on" : "";
       const add = added.has(vc.col) ? " added" : "";
       const fc = ci === this.forecastCol;
-      out.push(`<div class="hd${on}${add}${fc ? " fc" : ""}" style="left:${x}px;width:${w}px"${fc ? ` title="Estimates start here"` : ""}>${label}</div>`);
+      out.push(`<div class="hd${on}${add}${fc ? " fc" : ""}" data-i="${ci}" style="left:${x}px;width:${w}px"${fc ? ` title="Estimates start here"` : ""}>${label}</div>`);
     }
     return out.join("");
   }
@@ -471,7 +499,7 @@ export class Grid {
       const on = ri >= s0 && ri <= s1 ? " on" : "";
       const add = added.has(row) ? " added" : "";
       const rem = removedAfter.has(row) ? " removed-below" : "";
-      out.push(`<div class="rn${on}${add}${rem}" style="top:${y}px;height:${h}px">${row}</div>`);
+      out.push(`<div class="rn${on}${add}${rem}" data-i="${ri}" style="top:${y}px;height:${h}px">${row}</div>`);
     }
     return out.join("");
   }
@@ -530,9 +558,22 @@ export class Grid {
     return row >= Math.min(s.row, s.row2) && row <= Math.max(s.row, s.row2) && col >= Math.min(s.col, s.col2) && col <= Math.max(s.col, s.col2);
   }
 
+  /** Highlight the selected column letters and row numbers in place. */
   private renderHeaders() {
-    for (const name of ["hdrFrozen", "hdrScroll", "rowFrozen", "rowScroll"]) this.regions[name].rendered = null;
-    this.schedule();
+    const s = this.sel;
+    const [c0, c1] = [Math.min(s.col, s.col2), Math.max(s.col, s.col2)];
+    const [r0, r1] = [Math.min(s.row, s.row2), Math.max(s.row, s.row2)];
+    const mark = (name: string, lo: number, hi: number) => {
+      for (const el of this.regions[name].cells.children as HTMLCollectionOf<HTMLElement>) {
+        const i = Number(el.dataset.i);
+        const on = i >= lo && i <= hi;
+        if (el.classList.contains("on") !== on) el.classList.toggle("on", on);
+      }
+    };
+    mark("hdrFrozen", c0, c1);
+    mark("hdrScroll", c0, c1);
+    mark("rowFrozen", r0, r1);
+    mark("rowScroll", r0, r1);
   }
 
   private renderSelection() {
@@ -541,11 +582,22 @@ export class Grid {
     const r1 = Math.max(s.row, s.row2);
     const c0 = Math.min(s.col, s.col2);
     const c1 = Math.max(s.col, s.col2);
-    const rect = (a: number, b: number, c: number, e: number) =>
-      `left:${this.colX[c]}px;top:${this.rowY[a]}px;width:${this.colX[e + 1] - this.colX[c]}px;height:${this.rowY[b + 1] - this.rowY[a]}px`;
+    // The boxes are moved with a transform and resized only when the size changes.
+    const place = (el: HTMLDivElement, a: number, b: number, c: number, e: number, show: boolean) => {
+      const css = show
+        ? `transform:translate(${this.colX[c]}px,${this.rowY[a]}px);width:${this.colX[e + 1] - this.colX[c]}px;height:${this.rowY[b + 1] - this.rowY[a]}px`
+        : "display:none";
+      if (el.dataset.css !== css) {
+        el.dataset.css = css;
+        el.style.cssText = css;
+      }
+    };
     const multi = r0 !== r1 || c0 !== c1;
-    const html = `${multi ? `<div class="sel-range" style="${rect(r0, r1, c0, c1)}"></div>` : ""}<div class="sel-active" style="${rect(s.row, s.row, s.col, s.col)}"></div>`;
-    for (const name of ["corner", "top", "left", "main"]) this.regions[name].overlay.innerHTML = html;
+    for (const name of ["corner", "top", "left", "main"]) {
+      const reg = this.regions[name];
+      place(reg.range, r0, r1, c0, c1, multi);
+      place(reg.active, s.row, s.row, s.col, s.col, true);
+    }
   }
 
   ensureVisible(row: number, col: number) {
