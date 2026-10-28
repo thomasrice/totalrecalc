@@ -233,7 +233,7 @@ export class App {
       this.applySheet(new SheetData(payload), prevDisplayed === null ? "first" : anchor);
       $("#loading").classList.remove("on");
       // The embedding page marks an agent step as landed only once it is on screen.
-      this.tellParent({ type: "totalrecalc:rendered", index: info.versions.findIndex((v) => v.id === id), total: info.versions.length });
+      this.tellParent({ type: "totalrecalc:rendered", index: info.versions.findIndex((v) => v.id === id) });
       void this.api.pinVersions([this.displayed, this.baseline, this.previousBaseline].filter((v): v is number => v !== null));
       if (opts.announce && prevDisplayed !== null) {
         const fresh = await this.api.sheetChanges(id, index, prevDisplayed);
