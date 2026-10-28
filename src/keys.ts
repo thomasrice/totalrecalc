@@ -81,6 +81,8 @@ export function handleKey(app: App, e: KeyboardEvent) {
     case "G":
       return app.grid.select(app.grid.rowCount - 1, s.col);
     case "Tab":
+      // Embedded in a web page, Tab must be able to leave the frame.
+      if (app.embedded) return;
       return move(0, e.shiftKey ? -1 : 1);
     case "n":
       return void app.stepChange(1);
@@ -116,6 +118,8 @@ export function handleKey(app: App, e: KeyboardEvent) {
       if (closeOverlays(app)) return;
       if (s.row !== s.row2 || s.col !== s.col2) return app.grid.select(s.row, s.col);
       if (app.panel) return app.togglePanel(app.panel);
+      // Nothing left to close: an embedding page may take focus back.
+      if (app.embedded) app.tellParent({ type: "totalrecalc:escape" });
   }
 }
 

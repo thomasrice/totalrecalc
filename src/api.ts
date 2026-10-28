@@ -93,8 +93,9 @@ interface Fixture {
  * a watched file. By default each version follows the last after `?delay=`
  * milliseconds. With `?replay=manual`, a page embedding this one drives it
  * with `postMessage` (`totalrecalc:step`, `totalrecalc:play`,
- * `totalrecalc:pause`) and hears `totalrecalc:ready` and
- * `totalrecalc:version` back. Messages are accepted only from this origin.
+ * `totalrecalc:pause`) and hears `totalrecalc:ready` back; the app itself
+ * reports `totalrecalc:rendered` once each version is on screen, and
+ * `totalrecalc:escape` when Escape has nothing left to close. Messages are accepted only from this origin.
  */
 function fixtureApi(name: string): Api {
   let fixture: Promise<Fixture> | null = null;
@@ -121,7 +122,6 @@ function fixtureApi(name: string): Api {
     if (n >= f.versions.length) return;
     shown = n;
     versionCbs.forEach((cb) => cb(f.versions[n].id, true));
-    tell({ type: "totalrecalc:version", index: n, total: f.versions.length });
   };
   const play = () => {
     clearInterval(timer);

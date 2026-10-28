@@ -17,7 +17,9 @@ version is shown on load and each later one arrives after `?delay=`
 milliseconds (default 1600), like a live edit. With `?replay=manual` the
 versions advance only when an embedding page asks, via `postMessage`
 (`totalrecalc:step`, `totalrecalc:play`, `totalrecalc:pause`); the page hears
-`totalrecalc:ready` and `totalrecalc:version` back. `?follow` jumps to the first
+`totalrecalc:ready`, then `totalrecalc:rendered` (with the version's index) once
+each version is on screen, and `totalrecalc:escape` when Escape has nothing
+left to close. Embedded, Tab leaves the frame instead of moving between cells. `?follow` jumps to the first
 edit of each update, and `?fresh` ignores any remembered theme, sheet or panels. `pnpm build:replay` builds
 this mode into `dist-replay/` with the demo fixture, for embedding in a website.
 

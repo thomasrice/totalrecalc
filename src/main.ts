@@ -49,6 +49,8 @@ export class App {
   inspection: Inspection | null = null;
   history: { sheet: number; row: number; col: number }[] = [];
   grid: Grid;
+  /** Running inside a web page's iframe (the website's interactive replay). */
+  readonly embedded = window.parent !== window;
   /** The sheet the user last asked for, by name; display() honours it. */
   wantedSheet: string | null = null;
   /** Whether n/N step through edits only (true unless the version has none). */
@@ -230,6 +232,8 @@ export class App {
       if (this.watch.state === "loading") this.watch = info.watch;
       this.applySheet(new SheetData(payload), prevDisplayed === null ? "first" : anchor);
       $("#loading").classList.remove("on");
+      // The embedding page marks an agent step as landed only once it is on screen.
+      this.tellParent({ type: "totalrecalc:rendered", index: info.versions.findIndex((v) => v.id === id), total: info.versions.length });
       void this.api.pinVersions([this.displayed, this.baseline, this.previousBaseline].filter((v): v is number => v !== null));
       if (opts.announce && prevDisplayed !== null) {
         const fresh = await this.api.sheetChanges(id, index, prevDisplayed);
@@ -523,6 +527,11 @@ export class App {
 
   async copyChangeReport() {
     await this.writeClipboard(changeReport(this), "the change report");
+  }
+
+  /** Tell an embedding page something; only ever to this same origin. */
+  tellParent(message: object) {
+    if (this.embedded) window.parent.postMessage(message, location.origin);
   }
 
   async writeClipboard(text: string, what: string) {
