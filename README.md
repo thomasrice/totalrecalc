@@ -27,7 +27,7 @@ Total Recalc is built for that loop:
 
 - **It never touches the file.** It reads the workbook into memory and lets go, so an agent can overwrite, replace or delete it at any time.
 - **It follows along.** When a new version lands it refreshes within about a second, on the same sheet, scrolled to the same place, with the same cell selected, even if rows were inserted above it.
-- **It shows what changed, honestly.** Cells the agent *edited* are separated from cells that merely *recalculated*, so "3 edits · 240 results" is the headline rather than a carpet of highlights.
+- **It shows exactly what changed.** Cells the agent *edited* are separated from cells that merely *recalculated*, so "3 edits · 240 results" is the headline rather than a carpet of highlights.
 - **It hands numbers back.** *Copy with context* puts the sheet, row label, period, value, formula and previous value on your clipboard as Markdown, ready to paste to the agent.
 
 ## Features
@@ -42,7 +42,7 @@ Total Recalc is built for that loop:
 | **Cell details** | The selected cell's value, previous value, formula (with clickable references), its inputs and everything that uses it. Follow a chain with Enter, come back with Backspace. |
 | **Formula references** | Select a formula and the cells it refers to are outlined in colour, each matching its reference in the formula, as in Excel. |
 | **Faithful rendering** | Number formats, fonts, fills, borders, merged cells, frozen panes, hidden rows and columns, comments and Excel-style text overflow. Light mode looks like Excel; dark mode remaps workbook colours so dark header fills and blue inputs stay legible. |
-| **Honest numbers** | Every version is recalculated by a built-in engine ([IronCalc](https://github.com/ironcalc/IronCalc)). Where the engine cannot evaluate a formula faithfully (it errors, or the formula uses `INDIRECT`, `OFFSET`, `CELL`, `INFO` or another workbook) and the file carries Excel's saved result, that result is shown and marked, and so are the formulas that depend on it. |
+| **Numbers you can trace** | Every version is recalculated by a built-in engine ([IronCalc](https://github.com/ironcalc/IronCalc)). Where the engine cannot evaluate a formula faithfully (it errors, or the formula uses `INDIRECT`, `OFFSET`, `CELL`, `INFO` or another workbook) and the file carries Excel's saved result, that result is shown and marked, and so are the formulas that depend on it. |
 | **Command palette** | `Ctrl+K` for every action, sheet and row label. `Ctrl+G` goes to a cell or label, `Ctrl+F` searches the sheet. |
 
 <p align="center">
