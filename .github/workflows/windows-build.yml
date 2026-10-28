@@ -1,0 +1,35 @@
+name: Windows build
+
+# Run by hand to get a Windows build of any branch without tagging a
+# release. The installer and portable exe are kept as a workflow artifact.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      # pnpm's version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --bundles nsis
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe out/totalrecalc-windows-x64-setup.exe
+          cp src-tauri/target/release/totalrecalc.exe out/totalrecalc.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: totalrecalc-windows
+          path: out/
+          retention-days: 14
