@@ -318,6 +318,10 @@ button.ghost:hover {
   background: var(--head);
   color: var(--text);
 }
+button.ghost.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 button.link {
   display: inline-flex;
   align-items: center;
@@ -468,8 +472,7 @@ body.panel-open #body {
 }
 /* The top bar gives way in a fixed order; the file name always stays. */
 @media (max-width: 1200px) {
-  #topbar .version .muted,
-  #topbar [data-act="baseline"] .label {
+  #topbar .version .muted {
     display: none;
   }
 }
@@ -480,6 +483,12 @@ body.panel-open #body {
     display: none;
   }
   #topbar .version {
+    display: none;
+  }
+}
+/* Last to go: the panel buttons' words, keeping their icons. */
+@media (max-width: 760px) {
+  #topbar button.ghost .label {
     display: none;
   }
 }

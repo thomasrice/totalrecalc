@@ -424,6 +424,7 @@ export class App {
     this.panel = this.panel === p ? null : p;
     this.remember();
     this.renderPanel();
+    this.renderTopBar();
     this.grid.schedule(true);
   }
 
@@ -713,10 +714,10 @@ export class App {
         <button class="icon" data-act="next" title="Next edit (N)">${icon("down")}</button>
       </div>
       <button class="icon ${this.paused ? "active" : ""}" data-act="pause" title="${this.paused ? "Resume (Space)" : "Pause: hold this version while you look (Space)"}">${icon(this.paused ? "play" : "pause")}</button>
-      <button class="ghost" data-act="baseline" title="Make this version the baseline (F5)">${icon("flag")}<span class="label">Set baseline</span></button>
+      <button class="ghost" data-act="baseline" title="Use this version as the reference for change counts (F5)">Set baseline</button>
       <div class="divider"></div>
-      <button class="icon ${this.panel === "changes" ? "active" : ""}" data-act="changes" title="Changes (d)">${icon("changes")}</button>
-      <button class="icon ${this.panel === "inspector" ? "active" : ""}" data-act="inspector" title="Inspector (i)">${icon("inspect")}</button>
+      <button class="ghost ${this.panel === "changes" ? "active" : ""}" data-act="changes" title="Changes (d)">${icon("changes")}<span class="label">Changes</span></button>
+      <button class="ghost ${this.panel === "inspector" ? "active" : ""}" data-act="inspector" title="Cell details (i)">${icon("inspect")}<span class="label">Cell details</span></button>
       <button class="icon" data-act="palette" title="Command palette (Ctrl+K)">${icon("search")}</button>
       <button class="icon" data-act="theme" title="Light or dark (t)">${icon(this.theme === "light" ? "moon" : "sun")}</button>`;
     bar.onclick = (e) => {
@@ -855,7 +856,7 @@ export class App {
     el.innerHTML = `
       <div class="tabs">
         <button class="${this.panel === "changes" ? "on" : ""}" data-tab="changes">Changes</button>
-        <button class="${this.panel === "inspector" ? "on" : ""}" data-tab="inspector">Inspector</button>
+        <button class="${this.panel === "inspector" ? "on" : ""}" data-tab="inspector">Cell details</button>
         <button class="icon close" data-tab="close" title="Close (Esc)">${icon("x")}</button>
       </div>
       <div class="panel-body">${this.panel === "changes" ? changesHtml(this) : inspectorHtml(this)}</div>`;

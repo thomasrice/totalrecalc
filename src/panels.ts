@@ -1,4 +1,4 @@
-// The side panel's two tabs (Changes, Inspector) and the change report.
+// The side panel's two tabs (Changes, Cell details) and the change report.
 
 import type { App } from "./main";
 import type { CellChange, Inspection } from "./types";

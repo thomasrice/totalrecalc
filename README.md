@@ -33,7 +33,7 @@ Total Recalc is built for that loop:
 | **Edits versus results** | Rows are matched between versions by their labels and aligned like lines in a text diff, and old formulas are rewritten through that alignment before comparison. An inserted row is one new row, not a shift of everything below it. |
 | **Changes panel** | Every change since your baseline, grouped by row, with the period span, the range of moves and a before/after sparkline. Switch between *since baseline* and *latest update*; set a new baseline at any time (with Undo). |
 | **Pause** | Hold the version on screen while you talk about it. Total Recalc keeps watching and tells you how many newer versions are waiting. |
-| **Inspector** | The selected cell's value, previous value, formula (with clickable references), its inputs and everything that uses it. Follow a chain with Enter, come back with Backspace. |
+| **Cell details** | The selected cell's value, previous value, formula (with clickable references), its inputs and everything that uses it. Follow a chain with Enter, come back with Backspace. |
 | **Faithful rendering** | Number formats, fonts, fills, borders, merged cells, frozen panes, hidden rows and columns, comments and Excel-style text overflow. Light mode looks like Excel; dark mode remaps workbook colours so dark header fills and blue inputs stay legible. |
 | **Honest numbers** | Every version is recalculated by a built-in engine ([IronCalc](https://github.com/ironcalc/IronCalc)). Where the engine cannot evaluate a formula faithfully (it errors, or the formula uses `INDIRECT`, `OFFSET`, `CELL`, `INFO` or another workbook) and the file carries Excel's saved result, that result is shown and marked, and so are the formulas that depend on it. |
 | **Command palette** | `Ctrl+K` for every action, sheet and row label. `Ctrl+G` goes to a cell or label, `Ctrl+F` searches the sheet. |
@@ -43,7 +43,7 @@ Total Recalc is built for that loop:
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dark.png" alt="Dark theme with the inspector open" width="100%" />
+  <img src="docs/screenshots/dark.png" alt="Dark theme with cell details open" width="100%" />
 </p>
 
 ## Try it
@@ -71,7 +71,7 @@ uv run --with openpyxl demo/agent.py demo/northwind.xlsx
 | `N` / `Shift+N` | Next / previous edit, across sheets |
 | `Space` | Pause or resume live updates |
 | `F5` | Set the baseline to the version on screen |
-| `D` · `I` (or `F2`) | Changes panel · Inspector |
+| `D` · `I` (or `F2`) | Changes panel · Cell details |
 | `Enter` / `Backspace` (or `Alt+←`) | Follow the first input / go back |
 | `Ctrl+C` · `Ctrl+Shift+C` | Copy · copy with context |
 | `Ctrl+K` · `Ctrl+G` · `Ctrl+F` | Command palette · go to a cell or label · find on this sheet |

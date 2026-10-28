@@ -44,7 +44,7 @@ Everything else (looking like a well-made financial model, fast navigation, form
 - **Top bar (one line, 36px).** File name and short folder; the live state (`● Live`, `⏸ Paused · 2 newer versions`, `⚠ Can't read the file · showing v3`, with the reason in its tooltip); the time of the version on screen; the change headline against the current comparison; previous/next edit; Pause; Set baseline; panel toggles; search; theme.
 - **Peek strip (one line, always on).** For the selected cell: row label · column header, value, previous value, delta and formula. The most-wanted facts never need a panel.
 - **Sheet rail (left; collapses to initials at narrow widths).** Vertical list; a change dot with a count of *edits* per sheet; the current sheet has an accent bar.
-- **Right panel (closed by default, tabs: Changes | Inspector).** One panel, not two, so the grid keeps its width.
+- **Right panel (closed by default, tabs: Changes | Cell details).** One panel, not two, so the grid keeps its width.
 - **Status bar.** Address, selection sum/average/count, and calculation confidence (`All values calculated`, or `12 values from file cache · 3 unavailable`, clickable).
 
 ## The grid
@@ -71,7 +71,7 @@ Every accepted version is kept in memory (the last 30). The **comparison** is on
 - **Since baseline** (default). The baseline is the version open when the app started, until you click **Set baseline** (or `F5`), which shows a toast with Undo.
 - **Latest update**: the version just before the one on screen.
 
-A switch in the Changes tab and the top-bar headline chooses between them. Counts, highlights, navigation, tooltips, the peek strip and the inspector always use the same comparison. A small timeline in the Changes tab lists the versions (`14:20 · 14:27 · 14:32`, each with its edit count); clicking one sets it as the baseline.
+A switch in the Changes tab and the top-bar headline chooses between them. Counts, highlights, navigation, tooltips, the peek strip and cell details always use the same comparison. A small timeline in the Changes tab lists the versions (`14:20 · 14:27 · 14:32`, each with its edit count); clicking one sets it as the baseline.
 
 ### Edits versus results
 
@@ -110,7 +110,7 @@ Grouped by sheet, then by row: one line per changed row, not per cell, e.g. `Rev
 
 `Pause` (`Space`) freezes the version on screen while the app keeps watching. The top bar shows `⏸ Paused · 2 newer versions`. Resume jumps to the newest valid version and reports what changed meanwhile. This lets you discuss a number without it changing mid-sentence.
 
-## Inspector
+## Cell details
 
 For the selected cell: title (row label · column header; sheet and address beneath); value large, raw value small, previous value and delta; formula in a monospaced face with each reference clickable (references are coloured by sheet: same sheet, other sheet); the previous formula struck through if it changed; **Inputs** and **Used by** as expandable lists of `label · period  value`, clickable; calculation status (`calculated`, `from file cache: function X unsupported`, `unavailable`). `Backspace`/`Alt+←` goes back along the jump history.
 

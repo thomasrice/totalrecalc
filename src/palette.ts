@@ -88,7 +88,7 @@ function paletteItems(app: App, q: string, mode: "all" | "go" | "find"): Palette
       { kind: "Action", title: "Compare with the previous version", run: () => app.setCompare("latest") },
       { kind: "Action", title: "Next edit", hint: "N", run: () => void app.stepChange(1) },
       { kind: "Action", title: "Show changes", hint: "D", run: () => app.togglePanel("changes") },
-      { kind: "Action", title: "Inspect the selected cell", hint: "I", run: () => app.togglePanel("inspector") },
+      { kind: "Action", title: "Cell details for the selected cell", hint: "I", run: () => app.togglePanel("inspector") },
       { kind: "Action", title: "Copy with context", hint: "Ctrl Shift C", run: () => void app.copy(true) },
       { kind: "Action", title: "Copy change report", run: () => void app.copyChangeReport() },
       { kind: "Action", title: app.theme === "light" ? "Dark theme" : "Light theme", hint: "T", run: () => app.toggleTheme() },

@@ -38,7 +38,7 @@ export function showHelp(app: App) {
     ["N / Shift+N", "Next / previous edit"],
     ["Space", "Pause or resume live updates"],
     ["F5", "Set baseline"],
-    ["D · I (or F2)", "Changes · Inspector"],
+    ["D · I (or F2)", "Changes · Cell details"],
     ["Enter / Backspace (or Alt+←)", "Follow first input / go back"],
     ["Ctrl+C · Ctrl+Shift+C", "Copy · copy with context for your agent"],
     ["Ctrl+K · Ctrl+G · Ctrl+F", "Commands · go to · find"],
@@ -61,7 +61,7 @@ export function showContextMenu(app: App, x: number, y: number) {
     <button role="menuitem" data-m="ctx">${icon("sparkle")} Copy with context<kbd>Ctrl Shift C</kbd></button>
     <hr/>
     <button role="menuitem" data-m="inspect">${icon("inspect")} Inspect<kbd>I</kbd></button>
-    <button role="menuitem" data-m="baseline">${icon("flag")} Set baseline<kbd>F5</kbd></button>
+    <button role="menuitem" data-m="baseline">${icon("baseline")} Set baseline<kbd>F5</kbd></button>
   </div>`;
   o.onclick = (e) => {
     const m = (e.target as HTMLElement).closest<HTMLElement>("[data-m]")?.dataset.m;
