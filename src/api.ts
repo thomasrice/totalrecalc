@@ -28,7 +28,7 @@ export interface Api {
   readonly desktop: boolean;
 }
 
-const isTauri = "__TAURI_INTERNALS__" in window;
+export const isTauri = "__TAURI_INTERNALS__" in window;
 
 async function tauriApi(): Promise<Api> {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -169,7 +169,7 @@ function fixtureApi(name: string): Api {
     },
     async pinVersions() {},
     async inspect() {
-      return { inputs: [], usedBy: [] };
+      return { inputs: [], usedBy: [], unavailable: true };
     },
     initialPath: async () => (name === "none" ? null : name),
     pickFile: async () => null,

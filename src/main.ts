@@ -1,6 +1,6 @@
 import "./fonts.css";
 import "./styles.css";
-import { type Api, createApi } from "./api";
+import { type Api, createApi, isTauri } from "./api";
 import type { BookInfo, CellChange, Inspection, WatchState } from "./types";
 import { SheetData, address, colLetters } from "./sheet";
 import { Grid, type Selection } from "./grid";
@@ -121,6 +121,7 @@ export class App {
   }
 
   async pick() {
+    if (!isTauri) return toast("Opening files needs the desktop app; this is a sample replay", "info");
     const p = await this.api.pickFile();
     if (p) await this.open(p);
   }
@@ -233,7 +234,8 @@ export class App {
       this.applySheet(new SheetData(payload), prevDisplayed === null ? "first" : anchor);
       $("#loading").classList.remove("on");
       // The embedding page marks an agent step as landed only once it is on screen.
-      this.tellParent({ type: "totalrecalc:rendered", index: info.versions.findIndex((v) => v.id === id) });
+      // The grid draws in its next animation frame; report after that.
+      requestAnimationFrame(() => this.tellParent({ type: "totalrecalc:rendered", index: info.versions.findIndex((v) => v.id === id) }));
       void this.api.pinVersions([this.displayed, this.baseline, this.previousBaseline].filter((v): v is number => v !== null));
       if (opts.announce && prevDisplayed !== null) {
         const fresh = await this.api.sheetChanges(id, index, prevDisplayed);

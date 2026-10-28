@@ -154,4 +154,6 @@ export interface RefInfo {
 export interface Inspection {
   inputs: RefInfo[];
   usedBy: RefInfo[];
+  /** Browser mode: the sample carries no dependency lists. */
+  unavailable?: boolean;
 }

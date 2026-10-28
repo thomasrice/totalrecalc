@@ -87,10 +87,14 @@ export function inspectorHtml(app: App): string {
     ${cell?.formula ? `<div class="insp-sec">Formula</div><div class="insp-formula">${formulaHtml(cell.formula, { names: app.info!.sheets.map((x) => x.name), current: app.sheetIndex })}</div>` : ""}
     ${ch?.beforeFormula && ch.beforeFormula !== cell?.formula ? `<div class="insp-formula before">${esc(ch.beforeFormula)}</div>` : ""}
     ${cell?.comment ? `<div class="insp-sec">Note</div><div class="insp-note">${esc(cell.comment)}</div>` : ""}
-    <div class="insp-sec">Inputs</div>
+    ${
+      ins?.unavailable
+        ? `<div class="insp-sec">Inputs and used by</div><div class="muted small">Not in this sample: the desktop app works these out.</div>`
+        : `<div class="insp-sec">Inputs</div>
     ${ins ? refList(ins.inputs) : `<div class="muted small">…</div>`}
     <div class="insp-sec">Used by</div>
-    ${ins ? refList(ins.usedBy) : `<div class="muted small">…</div>`}
+    ${ins ? refList(ins.usedBy) : `<div class="muted small">…</div>`}`
+    }
     <div class="insp-calc">${calcNote}</div>
     ${app.history.length ? `<button class="link back" data-act="back">${icon("back")} Back (Backspace)</button>` : ""}`;
 }
