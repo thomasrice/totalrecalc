@@ -362,6 +362,11 @@ button.primary:hover {
   font-weight: 650;
   font-size: 14px;
 }
+#peek .value.empty {
+  color: var(--faint);
+  font-weight: 500;
+  font-size: 13px;
+}
 #peek .value.err {
   color: var(--red);
 }
@@ -681,6 +686,9 @@ body.panel-open #body {
   overflow: hidden;
   text-overflow: clip;
   max-width: 100%;
+  /* Room for italic overhang on the last glyph. */
+  padding-right: 2px;
+  margin-right: -2px;
 }
 .c.num {
   justify-content: flex-end;
@@ -840,6 +848,8 @@ body.panel-open #body {
   position: absolute;
   top: -3px;
   left: 6px;
+  white-space: nowrap;
+  z-index: 1;
   height: 18px;
   padding: 0 6px;
   font-size: 11px;
@@ -857,6 +867,10 @@ body.panel-open #body {
 }
 .grp.collapsed {
   border-style: dashed;
+}
+.grp.collapsed button {
+  left: 50%;
+  transform: translateX(-50%);
 }
 .grp-badge {
   background: var(--amber-tint);

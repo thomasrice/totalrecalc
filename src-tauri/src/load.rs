@@ -113,10 +113,7 @@ pub fn snapshot(loaded: &Loaded, cached: Option<&Book>) -> Book {
             }
             let num_fmt = model.get_style_for_cell(si, r, c).map(|s| s.num_fmt).unwrap_or_default();
             let (text, format_color) = match &value {
-                Value::Number(n) => {
-                    let f = format_number(*n, &num_fmt, locale);
-                    (f.text, f.color.and_then(format_color))
-                }
+                Value::Number(n) => format_value(*n, &num_fmt, locale),
                 Value::Text(s) => (s.clone(), None),
                 Value::Bool(b) => ((if *b { "TRUE" } else { "FALSE" }).to_string(), None),
                 Value::Empty => (String::new(), None),
@@ -256,6 +253,27 @@ fn same(a: &Value, b: &Value) -> bool {
         (Value::Number(x), Value::Number(y)) => (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0),
         _ => a == b,
     }
+}
+
+static LOCALE_TAG: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"\[\$([^\]-]*)-[0-9A-Fa-f]+\]").unwrap());
+
+/// Format a number with the cell's format. Excel locale tags such as
+/// `[$-409]` or `[$€-407]` are reduced to their currency symbol, which the
+/// formatter understands; a format it still cannot handle falls back to General.
+fn format_value(n: f64, num_fmt: &str, locale: &ironcalc_base::locale::Locale) -> (String, Option<String>) {
+    let fmt = if num_fmt.contains("[$") {
+        LOCALE_TAG
+            .replace_all(num_fmt, |c: &regex::Captures| if c[1].is_empty() { String::new() } else { format!("\"{}\"", &c[1]) })
+            .into_owned()
+    } else {
+        num_fmt.to_string()
+    };
+    let f = format_number(n, &fmt, locale);
+    if f.error.is_some() || f.text.starts_with('#') {
+        return (format_number(n, "General", locale).text, None);
+    }
+    (f.text, f.color.and_then(format_color))
 }
 
 /// An empty cell is worth sending only if its fill or borders are visible.

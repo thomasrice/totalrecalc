@@ -168,6 +168,7 @@ class App {
     if (token !== this.loadToken) return;
     this.info = info;
     this.displayed = id;
+    if (this.watch.state === "loading" || this.watch.state === "calculating") this.watch = info.watch;
     if (prevDisplayed === null) {
       const remembered = this.memory().sheet;
       const idx = info.sheets.findIndex((s) => s.name === remembered);
@@ -783,7 +784,7 @@ class App {
     el.innerHTML = `
       <span class="addr">${address(row, vc.col)}</span>
       <span class="what">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</span>
-      <span class="value ${cell?.error ? "err" : ""}">${esc(cell?.text || "blank")}</span>
+      <span class="value ${cell?.error ? "err" : ""} ${cell?.text ? "" : "empty"}">${esc(cell?.text || "Empty")}</span>
       ${ch ? `<span class="was">was ${esc(shortValue(ch.beforeValue, ch.beforeText))}</span>${dl ? `<span class="delta">${esc(dl)}</span>` : ""}${kind}` : ""}
       ${cell?.calc === 1 ? `<span class="calc-note" title="The engine could not calculate this formula; the value saved in the file is shown">from file cache</span>` : ""}
       ${cell?.formula ? `<span class="formula" title="${esc(cell.formula)}">${formulaHtml(cell.formula)}</span>` : ""}
@@ -804,7 +805,7 @@ class App {
           if (s.hidden) return "";
           const n = s.edits;
           const badge = n ? `<span class="badge edits" title="${n} edit${n === 1 ? "" : "s"}, ${s.results} result${s.results === 1 ? "" : "s"}">${n}</span>` : s.results ? `<span class="badge results" title="${s.results} recalculated">${s.results}</span>` : "";
-          return `<button class="sheet ${idx === this.sheetIndex ? "on" : ""} ${s.newSheet ? "new" : ""}" data-i="${idx}" title="${esc(s.name)}"><span class="nm">${esc(s.name)}</span>${badge}</button>`;
+          return `<button class="sheet ${idx === this.sheetIndex ? "on" : ""} ${s.newSheet ? "new" : ""}" data-i="${idx}"><span class="nm">${esc(s.name)}</span>${badge}</button>`;
         })
         .join("") +
       (i.sheets.some((s) => s.hidden) ? `<div class="rail-foot">${i.sheets.filter((s) => s.hidden).length} hidden</div>` : "") +
@@ -939,7 +940,7 @@ class App {
       <div class="insp-title">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</div>
       <div class="insp-sub">${esc(d.meta.name)}!${address(row, vc.col)}</div>
       <div class="insp-value ${cell?.error ? "err" : ""}">${esc(cell?.text || "blank")}</div>
-      ${cell && typeof cell.value === "number" && cell.text !== String(cell.value) ? `<div class="insp-raw">${cell.value}</div>` : ""}
+      ${cell && typeof cell.value === "number" && cell.text !== String(cell.value) ? `<div class="insp-raw">${Number(cell.value.toPrecision(12))}</div>` : ""}
       ${ch ? `<div class="insp-was"><span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span> was <b>${esc(shortValue(ch.beforeValue, ch.beforeText))}</b> <span class="delta">${esc(delta(ch.beforeValue, cell?.value ?? null, cell?.text ?? "", percent))}</span></div>` : ""}
       ${cell?.formula ? `<div class="insp-sec">Formula</div><div class="insp-formula">${formulaHtml(cell.formula, { names: this.info!.sheets.map((x) => x.name), current: this.sheetIndex })}</div>` : ""}
       ${ch?.beforeFormula && ch.beforeFormula !== cell?.formula ? `<div class="insp-formula before">${esc(ch.beforeFormula)}</div>` : ""}

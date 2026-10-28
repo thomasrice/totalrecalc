@@ -259,19 +259,23 @@ fn ingest(shared: &Shared, path: &Path, notify: &dyn Fn(Notice)) -> Result<u64, 
     zip::ZipArchive::new(std::io::Cursor::new(&bytes[..])).map_err(|_| "The file is not a complete workbook yet".to_string())?;
     let mut loaded = load::parse(&bytes).map_err(|e| format!("Not a readable workbook: {e}"))?;
     let cached = load::snapshot(&loaded, None);
+    let calculating = WatchState { state: "calculating".into(), ..Default::default() };
     let id = {
         let mut s = shared.lock().unwrap();
-        s.watch = WatchState { state: "calculating".into(), ..Default::default() };
+        s.watch = calculating.clone();
         s.push(cached.clone())
     };
+    notify(Notice::Watch(calculating));
     notify(Notice::Version { id, calculated: false });
     loaded.model.evaluate();
     let calculated = load::snapshot(&loaded, Some(&cached));
+    let watching = WatchState { state: "watching".into(), ..Default::default() };
     {
         let mut s = shared.lock().unwrap();
         s.replace(id, calculated);
-        s.watch = WatchState { state: "watching".into(), ..Default::default() };
+        s.watch = watching.clone();
     }
+    notify(Notice::Watch(watching));
     notify(Notice::Version { id, calculated: true });
     Ok(hash(&bytes))
 }
