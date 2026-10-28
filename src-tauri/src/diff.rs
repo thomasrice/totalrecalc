@@ -264,6 +264,14 @@ fn align_seq(old: &[(i32, String)], new: &[(i32, String)]) -> (HashMap<i32, i32>
             DiffOp::Delete { old_index, old_len, new_index } => {
                 removed.extend((0..old_len).map(|i| (old[old_index + i].0, after(new_index))));
             }
+            // The same number of rows swapped in place is the same rows with
+            // new labels (a label typed into an empty column, or a renamed
+            // line), not a block deleted and another inserted.
+            DiffOp::Replace { old_index, old_len, new_index, new_len } if old_len == new_len => {
+                for i in 0..old_len {
+                    map.insert(old[old_index + i].0, new[new_index + i].0);
+                }
+            }
             DiffOp::Replace { old_index, old_len, new_index, new_len } => {
                 removed.extend((0..old_len).map(|i| (old[old_index + i].0, after(new_index))));
                 added.extend((0..new_len).map(|i| new[new_index + i].0));
