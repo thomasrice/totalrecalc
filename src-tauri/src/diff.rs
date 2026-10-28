@@ -89,19 +89,11 @@ struct Alignment {
 }
 
 pub fn diff(old: &Book, new: &Book) -> Diff {
-    let alignments: HashMap<&str, Alignment> = new
-        .sheets
-        .iter()
-        .filter_map(|ns| old.sheet(&ns.meta.name).map(|os| (ns.meta.name.as_str(), align(os, ns, old, new))))
-        .collect();
+    let alignments: HashMap<&str, Alignment> =
+        new.sheets.iter().filter_map(|ns| old.sheet(&ns.meta.name).map(|os| (ns.meta.name.as_str(), align(os, ns, old, new)))).collect();
 
     let mut out = Diff {
-        removed_sheets: old
-            .sheets
-            .iter()
-            .filter(|s| new.sheet(&s.meta.name).is_none())
-            .map(|s| s.meta.name.clone())
-            .collect(),
+        removed_sheets: old.sheets.iter().filter(|s| new.sheet(&s.meta.name).is_none()).map(|s| s.meta.name.clone()).collect(),
         ..Default::default()
     };
 
@@ -174,13 +166,6 @@ fn has_content(cell: &Cell) -> bool {
     cell.formula.is_some() || cell.value != Value::Empty
 }
 
-fn same_value(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0),
-        _ => a == b,
-    }
-}
-
 fn classify(before: Option<&Cell>, after: &Cell, sheet: &str, alignments: &HashMap<&str, Alignment>) -> Option<Kind> {
     let Some(before) = before.filter(|b| has_content(b)) else {
         return has_content(after).then_some(Kind::Added);
@@ -188,7 +173,7 @@ fn classify(before: Option<&Cell>, after: &Cell, sheet: &str, alignments: &HashM
     if !has_content(after) {
         return Some(Kind::Cleared);
     }
-    let value_changed = !same_value(&before.value, &after.value) || before.error != after.error;
+    let value_changed = !before.value.same(&after.value) || before.error != after.error;
     let formula_changed = match (&before.formula, &after.formula) {
         (None, None) => false,
         (Some(f_old), Some(f_new)) => remap_formula(f_old, sheet, alignments) != *f_new,
@@ -217,10 +202,7 @@ fn row_keys(sheet: &Sheet, book: &Book) -> Vec<(i32, String)> {
         let label = sheet.row_label(r);
         let row_cells: Vec<&Cell> = sheet.cells.range((r, 0)..(r + 1, 0)).map(|(_, c)| c).collect();
         // Numbers beyond the label columns: a section heading has none.
-        let has_numbers = sheet
-            .cells
-            .range((r, sheet.meta.label_cols + 1)..(r + 1, 0))
-            .any(|(_, c)| matches!(c.value, Value::Number(_)));
+        let has_numbers = sheet.cells.range((r, sheet.meta.label_cols + 1)..(r + 1, 0)).any(|(_, c)| matches!(c.value, Value::Number(_)));
         let base = if label.is_empty() {
             // Unlabelled rows (blank or not) are matched by order within
             // their section; their values must not change their identity.

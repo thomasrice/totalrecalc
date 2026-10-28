@@ -11,5 +11,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --bin totalrecalc-dump -- old.xls
 
 With two files, the older version is shown first and the newer one arrives
 after `?delay=` milliseconds (default 1600), like a live edit. `demo.json` is
-the Northwind demo before and after its agent adds a Services revenue line.
+the Northwind demo at its baseline compared with the version after the
+demo agent's third step (unit growth raised, the 2027 margin lifted and a
+Services revenue line added).
 Set `TOTALRECALC_FIXTURES` to serve fixtures from another folder.

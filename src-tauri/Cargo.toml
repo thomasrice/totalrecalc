@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "A live, read-only spreadsheet viewer for watching a workbook while an AI agent edits it"
 authors = ["Thomas Rice"]
 license = "MIT"
+repository = "https://github.com/thomasrice/totalrecalc"
+homepage = "https://totalrecalc.com"
+readme = "../README.md"
+keywords = ["excel", "xlsx", "spreadsheet", "viewer", "tauri"]
+categories = ["gui"]
 edition = "2024"
 default-run = "totalrecalc"
 

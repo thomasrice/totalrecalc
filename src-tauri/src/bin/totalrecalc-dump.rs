@@ -4,8 +4,8 @@
 //! prints the new version compared with the old one. The output is the
 //! fixture format the frontend's browser mode reads.
 
-use totalrecalc_lib::session::{self, Session, Shared};
 use std::sync::{Arc, Mutex};
+use totalrecalc_lib::session::{self, Session, Shared};
 
 fn main() {
     let paths: Vec<String> = std::env::args().skip(1).collect();

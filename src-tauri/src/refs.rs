@@ -1,12 +1,10 @@
 //! Formula references: what a cell reads (inputs) and what reads it (used by).
 
 use crate::book::Book;
-use crate::formula::{self, col_letters};
+use crate::formula::{self, MAX_COL, MAX_ROW, col_letters};
 use serde::Serialize;
 
 const MAX_LISTED: usize = 60;
-const MAX_ROW: i32 = 1_048_576;
-const MAX_COL: i32 = 16_384;
 
 #[derive(Clone, Debug)]
 pub struct Range {

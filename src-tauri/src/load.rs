@@ -17,6 +17,17 @@ use std::io::{Cursor, Read, Write};
 /// Excel's default row height is 15pt; we draw rows a little taller for
 /// legibility and scale custom heights by the same factor.
 const DEFAULT_ROW_PX: f32 = 24.0;
+/// IronCalc stores column widths at 9px per Excel width unit (90 for the
+/// default); Excel draws 7px per unit plus 5px of padding.
+const IRONCALC_DEFAULT_WIDTH: f64 = 90.0;
+const IRONCALC_PX_PER_UNIT: f64 = 9.0;
+const EXCEL_PX_PER_UNIT: f64 = 7.0;
+const EXCEL_WIDTH_PADDING: f64 = 5.0;
+/// Formatting-only cells are kept this many rows/columns past the content.
+const FORMAT_MARGIN: i32 = 2;
+/// References larger than this are not followed when propagating cache
+/// doubt; a lookup over a whole table is usually a doubt seed itself.
+const MAX_FOLLOWED_RANGE: i64 = 4096;
 const PX_PER_POINT: f32 = DEFAULT_ROW_PX / 15.0;
 
 pub struct Loaded {
@@ -82,18 +93,18 @@ pub fn snapshot(loaded: &Loaded, cached: Option<&Book>) -> Book {
 
     for (si, ws) in model.workbook.worksheets.iter().enumerate() {
         let si = si as u32;
-        let comments: HashMap<(i32, i32), String> = ws
-            .comments
-            .iter()
-            .filter_map(|c| parse_ref(&c.cell_ref).map(|rc| (rc, c.text.trim().to_string())))
-            .collect();
+        let comments: HashMap<(i32, i32), String> =
+            ws.comments.iter().filter_map(|c| parse_ref(&c.cell_ref).map(|rc| (rc, c.text.trim().to_string()))).collect();
         let extra = loaded.extras.sheets.get(&ws.name);
         let mut cells = BTreeMap::new();
         let (mut max_row, mut max_col) = (1, 1);
         for (r, c, _) in ws.sheet_data.cells() {
             let Ok(style_index) = model.get_cell_style_index(si, r, c) else { continue };
             let style_id = *style_ids.entry(style_index).or_insert_with(|| {
-                let s = model.get_style_for_cell(si, r, c).map(|s| convert_style(&s, theme, loaded.extras.indents.get(style_index as usize).copied().unwrap_or(0))).unwrap_or_default();
+                let s = model
+                    .get_style_for_cell(si, r, c)
+                    .map(|s| convert_style(&s, theme, loaded.extras.indents.get(style_index as usize).copied().unwrap_or(0)))
+                    .unwrap_or_default();
                 styles.push(s);
                 (styles.len() - 1) as u32
             });
@@ -131,13 +142,10 @@ pub fn snapshot(loaded: &Loaded, cached: Option<&Book>) -> Book {
         }
         // Formatting that runs far beyond the content (whole-row fills, styled
         // columns to XFD) would make the sheet enormous; keep a small margin.
-        let (keep_rows, keep_cols) = (max_row + 2, max_col + 2);
+        let (keep_rows, keep_cols) = (max_row + FORMAT_MARGIN, max_col + FORMAT_MARGIN);
         cells.retain(|&(r, c), _| r <= keep_rows && c <= keep_cols);
-        let merges: Vec<[i32; 4]> = ws
-            .merged_cells
-            .iter()
-            .map(|m| [m.row, m.column, m.row + m.height - 1, m.column + m.width - 1])
-            .collect();
+        let merges: Vec<[i32; 4]> =
+            ws.merged_cells.iter().map(|m| [m.row, m.column, m.row + m.height - 1, m.column + m.width - 1]).collect();
         for m in &merges {
             max_row = max_row.max(m[2]);
             max_col = max_col.max(m[3]);
@@ -145,9 +153,8 @@ pub fn snapshot(loaded: &Loaded, cached: Option<&Book>) -> Book {
         let mut col_widths = Vec::with_capacity(max_col as usize);
         let mut hidden_cols = Vec::new();
         for c in 1..=max_col {
-            let w = model.get_column_width(si, c).unwrap_or(90.0);
-            // IronCalc stores 9px per Excel width unit; Excel draws 7px per unit plus 5px padding.
-            col_widths.push(((w / 9.0) * 7.0 + 5.0).round() as f32);
+            let w = model.get_column_width(si, c).unwrap_or(IRONCALC_DEFAULT_WIDTH);
+            col_widths.push(((w / IRONCALC_PX_PER_UNIT) * EXCEL_PX_PER_UNIT + EXCEL_WIDTH_PADDING).round() as f32);
             if ws.cols.iter().any(|col| col.hidden && col.min <= c && c <= col.max) {
                 hidden_cols.push(c);
             }
@@ -239,7 +246,7 @@ fn reconcile(book: &mut Book, cached: &Book) {
                 let Some(f) = cell.formula.as_deref() else { continue };
                 for rg in refs::ranges(f, &sheet.meta.name) {
                     let Some(&ti) = names.get(rg.sheet.as_str()) else { continue };
-                    if (rg.r2 - rg.r1 + 1) as i64 * (rg.c2 - rg.c1 + 1) as i64 > 4096 {
+                    if (rg.r2 - rg.r1 + 1) as i64 * (rg.c2 - rg.c1 + 1) as i64 > MAX_FOLLOWED_RANGE {
                         continue;
                     }
                     for rr in rg.r1..=rg.r2 {
@@ -275,7 +282,7 @@ fn reconcile(book: &mut Book, cached: &Book) {
                 continue;
             }
             match saved.and_then(|x| x.cells.get(&(r, c))).filter(|s| s.value != Value::Empty) {
-                Some(s) if !(same(&s.value, &cell.value) && s.error == cell.error) => {
+                Some(s) if !(s.value.same(&cell.value) && s.error == cell.error) => {
                     cell.text = s.text.clone();
                     cell.value = s.value.clone();
                     cell.format_color = s.format_color.clone();
@@ -287,13 +294,6 @@ fn reconcile(book: &mut Book, cached: &Book) {
                 None => {}
             }
         }
-    }
-}
-
-fn same(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0),
-        _ => a == b,
     }
 }
 
@@ -402,18 +402,7 @@ fn convert_style(s: &ironcalc_base::types::Style, theme: &Theme, indent: u32) ->
 
 /// "B12" → (12, 2)
 pub fn parse_ref(r: &str) -> Option<(i32, i32)> {
-    let r = r.replace('$', "");
-    let split = r.find(|ch: char| ch.is_ascii_digit())?;
-    let (letters, digits) = r.split_at(split);
-    if letters.is_empty() {
-        return None;
-    }
-    let mut col = 0i32;
-    for ch in letters.chars() {
-        if !ch.is_ascii_alphabetic() {
-            return None;
-        }
-        col = col * 26 + (ch.to_ascii_uppercase() as i32 - 'A' as i32 + 1);
-    }
-    Some((digits.parse().ok()?, col))
+    let refs = crate::formula::references(r);
+    let first = refs.first().filter(|x| x.to.is_none() && x.sheet.is_none())?;
+    Some((first.from.row?, first.from.col?))
 }

@@ -3,7 +3,8 @@
 
 import type { CellStyle, ChangeKind } from "./types";
 import type { SheetData } from "./sheet";
-import { colLetters } from "./sheet";
+import { cellKey, colLetters } from "./sheet";
+import { esc } from "./format";
 import { type ViewCol, type YearGroup, derivedValue, periodLabel } from "./periods";
 import { type Theme, workbookColors } from "./theme";
 
@@ -23,7 +24,7 @@ export interface Selection {
   col2: number;
 }
 
-export interface GridEvents {
+interface GridEvents {
   select(sel: Selection): void;
   toggleGroup(year: number): void;
   setLevel(collapsed: boolean): void;
@@ -39,7 +40,6 @@ interface Region {
   rendered: { r0: number; r1: number; c0: number; c1: number } | null;
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function lowerBound(arr: number[], x: number): number {
   let lo = 0;
@@ -183,8 +183,8 @@ export class Grid {
     this.merges.clear();
     this.covered.clear();
     for (const m of data.meta.merges) {
-      this.merges.set(m[0] * 20000 + m[1], m);
-      for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) if (r !== m[0] || c !== m[1]) this.covered.add(r * 20000 + c);
+      this.merges.set(cellKey(m[0], m[1]), m);
+      for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) if (r !== m[0] || c !== m[1]) this.covered.add(cellKey(r, c));
     }
     this.layout();
     this.schedule(true);
@@ -405,7 +405,7 @@ export class Grid {
           continue;
         }
         const col = vc.col;
-        const k = row * 20000 + col;
+        const k = cellKey(row, col);
         if (this.covered.has(k)) continue;
         const cell = d.cell(row, col);
         const ch = d.change(row, col);
@@ -440,7 +440,7 @@ export class Grid {
             const n = this.viewCols[j];
             if (n.kind !== "sheet") break;
             const nc = d.cell(row, n.col);
-            if ((nc && nc.text) || this.covered.has(row * 20000 + n.col) || d.change(row, n.col)) break;
+            if ((nc && nc.text) || this.covered.has(cellKey(row, n.col)) || d.change(row, n.col)) break;
             j++;
           }
           if (j > ci + 1) {
@@ -755,7 +755,7 @@ export class Grid {
     const sorted = [...cells].sort((a, b) => a.r - b.r || a.c - b.c);
     const span = reducedMotion ? 0 : 600;
     const step = sorted.length > 1 ? Math.min(30, span / sorted.length) : 0;
-    sorted.forEach((cell, i) => this.pulses.set(cell.r * 20000 + cell.c, Math.round(i * step)));
+    sorted.forEach((cell, i) => this.pulses.set(cellKey(cell.r, cell.c), Math.round(i * step)));
     this.pulseUntil = performance.now() + Math.min(span, sorted.length * step) + 900;
     this.schedule(true);
     setTimeout(() => this.schedule(true), this.pulseUntil - performance.now() + 50);

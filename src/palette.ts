@@ -2,7 +2,7 @@
 
 import type { App } from "./main";
 import type { SheetSummary } from "./types";
-import { address } from "./sheet";
+import { address, colNumber } from "./sheet";
 import { esc } from "./format";
 import { $ } from "./dom";
 import { closeOverlays, showHelp } from "./overlays";
@@ -75,7 +75,7 @@ function paletteItems(app: App, q: string, mode: "all" | "go" | "find"): Palette
   const d = app.data;
   const m = /^([a-z]{1,3})(\d+)$/i.exec(q.trim());
   if (m && d) {
-    const c = m[1].toUpperCase().split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+    const c = colNumber(m[1]);
     const r = Number(m[2]);
     out.push({ kind: "Go", title: `${m[1].toUpperCase()}${r}`, hint: d.rowLabel(r), run: () => void app.jumpTo(app.sheetIndex, r, c) });
   }

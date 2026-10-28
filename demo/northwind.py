@@ -373,6 +373,6 @@ def save_atomically(wb: Workbook, path: str) -> None:
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else "northwind.xlsx"
+    out = sys.argv[1] if len(sys.argv) > 1 else "demo/northwind.xlsx"
     save_atomically(build(Knobs()), out)
     print(f"wrote {out}")

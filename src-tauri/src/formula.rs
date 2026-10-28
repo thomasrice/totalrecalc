@@ -3,6 +3,10 @@
 //! follows them).
 
 use regex::Regex;
+
+/// Excel's sheet limits.
+pub const MAX_ROW: i32 = 1_048_576;
+pub const MAX_COL: i32 = 16_384;
 use std::sync::LazyLock;
 
 /// One end of a reference. A whole-column reference has no row; a whole-row

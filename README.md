@@ -67,19 +67,23 @@ uv run --with openpyxl demo/agent.py demo/northwind.xlsx
 
 | Keys | Action |
 |---|---|
-| Arrows · `Ctrl`+arrows · `PgUp`/`PgDn` | Move · jump to the edge of data · page |
+| Arrows · `Ctrl`+arrows · `PgUp`/`PgDn` · `Home`/`End` · `Tab` | Move · jump to the edge of data · page · row start/end · next cell |
 | `Shift` + movement | Extend the selection |
 | `Ctrl+PgUp` / `Ctrl+PgDn` | Previous / next sheet |
 | `N` / `Shift+N` | Next / previous edit, across sheets |
 | `Space` | Pause or resume live updates |
 | `F5` | Set the baseline to the version on screen |
 | `D` · `I` (or `F2`) | Changes panel · Inspector |
-| `Enter` / `Backspace` | Follow the first input / go back |
+| `Enter` / `Backspace` (or `Alt+←`) | Follow the first input / go back |
 | `[` / `]` | Collapse to years / expand quarters |
 | `Ctrl+C` · `Ctrl+Shift+C` | Copy · copy with context |
-| `Ctrl+K` · `Ctrl+G` · `Ctrl+F` | Command palette · go to · find |
-| `Ctrl` + scroll · `Ctrl+0` | Zoom · reset |
+| `Ctrl+K` · `Ctrl+G` · `Ctrl+F` | Command palette · go to a cell or label · find on this sheet |
+| `Ctrl+O` | Open a workbook |
+| `Ctrl` + scroll · `Ctrl` `+`/`-` · `Ctrl+0` | Zoom · reset zoom |
 | `T` | Light or dark |
+| `?` · `Esc` | Keyboard help · close a panel or overlay |
+
+Vim keys (`h` `j` `k` `l`, `g`, `G`) work too.
 
 ## How it works
 
@@ -87,9 +91,18 @@ Total Recalc is a [Tauri 2](https://tauri.app) app. The Rust side does the work:
 
 A version is accepted only once the file's size and timestamp have been stable for half a second and it parses as a complete workbook. If reading fails, the last good version stays on screen and the top bar says what is wrong.
 
+The app makes no network requests. Its webview loads only the bundled interface, so no content security policy is configured (`csp: null` in `tauri.conf.json`); workbook text is always escaped before it is shown.
+
 ## Building from source
 
-You need Rust (stable), Node 22 and pnpm. On Linux, also the WebKitGTK development packages (`libwebkit2gtk-4.1-dev` on Debian/Ubuntu, `webkit2gtk-4.1` on Arch).
+You need Rust (stable), Node 22, pnpm 10 and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform. On Debian or Ubuntu:
+
+```sh
+sudo apt install build-essential curl wget file libwebkit2gtk-4.1-dev \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+```
+
+On Arch: `webkit2gtk-4.1`, `librsvg` and `patchelf`.
 
 ```sh
 pnpm install

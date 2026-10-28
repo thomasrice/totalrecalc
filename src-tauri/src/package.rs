@@ -46,8 +46,7 @@ pub fn read_extras(bytes: &[u8]) -> Result<Extras> {
     if let Some(styles) = read_part(&mut archive, "xl/styles.xml") {
         extras.indents = read_indents(&styles);
     }
-    let (Some(workbook), Some(rels)) =
-        (read_part(&mut archive, "xl/workbook.xml"), read_part(&mut archive, "xl/_rels/workbook.xml.rels"))
+    let (Some(workbook), Some(rels)) = (read_part(&mut archive, "xl/workbook.xml"), read_part(&mut archive, "xl/_rels/workbook.xml.rels"))
     else {
         return Ok(extras);
     };
@@ -171,7 +170,7 @@ fn outline_col(e: &BytesStart, out: &mut SheetExtras) {
     if let Some(level) = attr(e, "outlineLevel").and_then(|v| v.parse::<u8>().ok()).filter(|l| *l > 0) {
         let min: i32 = attr(e, "min").and_then(|v| v.parse().ok()).unwrap_or(0);
         let max: i32 = attr(e, "max").and_then(|v| v.parse().ok()).unwrap_or(min);
-        for c in min..=max.min(min + 16384) {
+        for c in min..=max.min(crate::formula::MAX_COL) {
             out.cols.insert(c, level);
         }
     }

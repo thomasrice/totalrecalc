@@ -41,16 +41,16 @@ Everything else (looking like a well-made financial model, fast navigation, form
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Top bar (one line, 36px).** File name and short folder; the live state (`● Live`, `⏸ Paused · newer version 14:35`, `⚠ File unreadable since 14:33 · showing 14:32 · Retry`); the time of the version on screen; the change headline against the current comparison; previous/next change; Pause; search.
+- **Top bar (one line, 36px).** File name and short folder; the live state (`● Live`, `⏸ Paused · 2 newer versions`, `⚠ Can't read the file · showing v3`, with the reason in its tooltip); the time of the version on screen; the change headline against the current comparison; previous/next edit; Pause; Set baseline; panel toggles; search; theme.
 - **Peek strip (one line, always on).** For the selected cell: row label · column header, value, previous value, delta and formula. The most-wanted facts never need a panel.
-- **Sheet rail (left, resizable, collapses to icons at narrow widths).** Vertical list; a change dot with a count of *edits* per sheet; the current sheet has an accent bar.
-- **Right panel (resizable, closed by default, tabs: Changes | Inspector).** One panel, not two, so the grid keeps its width.
+- **Sheet rail (left; collapses to initials at narrow widths).** Vertical list; a change dot with a count of *edits* per sheet; the current sheet has an accent bar.
+- **Right panel (closed by default, tabs: Changes | Inspector).** One panel, not two, so the grid keeps its width.
 - **Status bar.** Address, selection sum/average/count, and calculation confidence (`All values calculated`, or `12 values from file cache · 3 unavailable`, clickable).
 
 ## The grid
 
 - **Fidelity to the workbook**: number formats (separators, decimals, percentages, bracketed negatives, format colours), alignment, bold, italic, indentation, borders, column widths, row heights, wrapping, merged cells, hidden rows and columns, and cell comments (a small corner mark; hover shows the comment).
-- **Frozen panes** come from the workbook. If it has none, the app infers a header row and label column from the layout and shows a small "Freeze: inferred" control to override.
+- **Frozen panes** come from the workbook. If it has none, the app infers a header row and label column from the layout and says so in the status bar ("Freeze: inferred").
 - **Colours.** In the default light theme, fills and text colours appear exactly as the file defines them. In the optional dark theme, a fill and its text colour are mapped together:
   - A strong fill with light text (the navy header rows) stays solid, darkened slightly in dark mode.
   - A light fill with dark text becomes a low-opacity tint of its hue.
@@ -96,10 +96,10 @@ The headline leads with edits: `3 edits · 240 results · 1 row added`. The app 
 
 - **Edited cells**: a 2px amber bar on the cell's left edge plus an amber tint. Formula-only edits (same value, new formula) use a violet bar and no tint.
 - **Results**: a faint amber tint only, no bar. Large contiguous runs read as a band, not confetti.
-- **On each accepted update**: one restrained 400ms opacity pulse on cells changed *by that update*. No pulse while scrolling, none at all with reduced motion.
+- **On each accepted update**: the wake, a soft 550ms pulse on each cell changed *by that update*, staggered in reading order across about 600ms (violet for formula-only edits). Reduced motion turns it into a single short fade.
 - **Selection and source formatting** draw above change tints.
 - **Rounding-only changes** (value moved but displays the same) get the bar or tint plus a `≈` in the peek strip, so they are findable but not alarming. Changes below 1e-9 relative are ignored as numerical noise.
-- **Blank ↔ zero** counts as a change and is shown as `blank → 0`.
+- **Blank ↔ value** counts as a change and is shown as `blank → value`.
 - **Deltas**: absolute first; percentage only when the old value is non-zero; percentage-point change for percentage-formatted cells.
 
 ### Matching cells across versions
@@ -113,11 +113,11 @@ Rows are aligned between versions as a sequence (the same way a text diff aligns
 
 ### Changes tab
 
-Grouped by sheet, then by row: one line per changed row, not per cell, e.g. `Revenue · 3Q26E–FY2040E · 18 cells · +2.1% to +4.8%`, with a small before/after sparkline when the row is a period series. Edited rows come first, then results. Removed rows and sheets appear with their old contents. Clicking a line jumps to its first cell; `n`/`N` step through changes in reading order.
+Grouped by sheet, then by row: one line per changed row, not per cell, e.g. `Revenue · 3Q26E–FY2040E · 18 cells · +2.1% to +4.8%`, with a small before/after sparkline when the row is a period series. Edited rows come first, then results. Removed rows and sheets appear with their old contents. Clicking a line jumps to its first cell (opening a collapsed year if needed); `n`/`N` step through edits in reading order, across sheets, falling back to results when a version has no edits.
 
 ## Pause
 
-`Pause` (`Space`) freezes the version on screen while the app keeps watching. The top bar shows `⏸ Paused · newer version 14:35 (2 updates)`. Resume jumps to the newest valid version and reports what changed meanwhile. This lets you discuss a number without it changing mid-sentence.
+`Pause` (`Space`) freezes the version on screen while the app keeps watching. The top bar shows `⏸ Paused · 2 newer versions`. Resume jumps to the newest valid version and reports what changed meanwhile. This lets you discuss a number without it changing mid-sentence.
 
 ## Inspector
 
@@ -134,7 +134,7 @@ For the selected cell: title (row label · column header; sheet and address bene
 - **Read-only and lock-free.** The file is opened with full read, write and delete sharing, read into memory and closed. The app never writes to it or creates files beside it.
 - **Detection.** Watch the folder (writers often rename a temp file over the target) and poll the modified time and size every second as a fallback for network and synced drives.
 - **Accepting a version.** Wait until size and modified time have been stable for 500ms, confirm the zip's central directory, then parse and recalculate off the UI thread. A newer change during the work supersedes it. Only a fully loaded version is shown.
-- **Failures.** The last good version stays on screen. After 5 seconds of failure the top bar says plainly what is wrong (missing, unreadable, not a valid workbook) with the time of the version shown and a Retry button.
+- **Failures.** The last good version stays on screen. After 5 seconds of failure the top bar says so, with the version still shown and the reason in its tooltip. The app keeps retrying every second; no action is needed.
 - The app makes no claim that the agent has *finished*; it shows the latest valid file.
 
 ## Recalculation honesty
@@ -149,24 +149,9 @@ Every version is recalculated with the built-in engine. Each value is one of: **
 
 Every action also has a button or menu entry. `?` opens the full list; the status bar shows `? Shortcuts`.
 
-| Key | Action |
-|---|---|
-| Arrows, `Ctrl`+arrows, `PgUp`/`PgDn`, `Home`/`End` | Move (Excel conventions) |
-| `Shift`+movement | Extend selection |
-| `Ctrl+PgUp` / `Ctrl+PgDn` | Previous / next sheet |
-| `Ctrl+G` | Go to address or label |
-| `Ctrl+F` | Search the current sheet (Enter cycles; option for all sheets) |
-| `n` / `N` | Next / previous change |
-| `Space` | Pause / resume |
-| `F5` | Set baseline |
-| `F2` or `i` | Inspector |
-| `d` | Changes tab |
-| `Enter` / `Backspace` | Follow first input / go back |
-| `[` / `]` | Collapse to years / expand to quarters |
-| `Ctrl+C`, `Ctrl+Shift+C` | Copy, copy with context |
-| `Ctrl` + scroll, `Ctrl` `+`/`-`/`0` | Zoom |
+The canonical list is the Keyboard table in the README.
 
-Vim movement keys (`h j k l`, `g`/`G`) work as well but are not advertised.
+Vim movement keys (`h j k l`, `g`/`G`) work as well.
 
 ## Visual language
 
@@ -185,8 +170,8 @@ Small touches that make the app feel made with care, none of which get in the wa
 - **Command palette** (`Ctrl+K`): every action, sheet and row label in one searchable list.
 - **Copy feedback**: a small toast shows exactly what went to the clipboard.
 - **A first-run window** with the Total Recalc mark and a drop zone that glows when a file is dragged over it.
-- **Remembered state** per file: last sheet, scroll position, collapsed years and panel widths.
+- **Remembered state** per file: last sheet, scroll position per sheet, collapsed years and the open panel.
 
 ## Out of scope for version one
 
-Editing of any kind; saving or exporting; charts and images (an outline marks where one sits); conditional formatting beyond cell styles; formats other than `.xlsx`; several files in one window; a pinned watchlist of key cells, named snapshots and agent-supplied change notes (all candidates for version two); accessibility beyond keyboard operation (screen-reader semantics for the painted grid are a known gap).
+Editing of any kind; saving or exporting; charts and images (an outline marks where one sits); conditional formatting beyond cell styles; formats other than `.xlsx` and `.xlsm`; several files in one window; a pinned watchlist of key cells, named snapshots and agent-supplied change notes (all candidates for version two); accessibility beyond keyboard operation (screen-reader semantics for the painted grid are a known gap).

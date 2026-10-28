@@ -48,9 +48,7 @@ pub fn annotate(meta: &mut SheetMeta, cells: &BTreeMap<(i32, i32), Cell>) {
     let scan_to = if meta.frozen_rows > 0 { meta.frozen_rows.max(1) } else { 15 }.min(meta.max_row);
     let mut best: Option<(i32, usize)> = None;
     for r in 1..=scan_to {
-        let n = (1..=meta.max_col)
-            .filter(|c| cells.get(&(r, *c)).is_some_and(is_period_text))
-            .count();
+        let n = (1..=meta.max_col).filter(|c| cells.get(&(r, *c)).is_some_and(is_period_text)).count();
         if n >= 3 && best.is_none_or(|(_, m)| n > m) {
             best = Some((r, n));
         }

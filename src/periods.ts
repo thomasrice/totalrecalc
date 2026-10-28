@@ -83,7 +83,7 @@ const FLOW = /(revenue|sales|income|profit|loss|ebit|ebitda|cost|expense|opex|ca
 /** How a row should roll up from quarters to a year. */
 const STOCK = /(liabilit|assets|payable|receivable|debt|borrowing|equity|cash and|inventor|balance|provision|reserve|retained)/i;
 
-export function rowRule(sheetName: string, label: string, sampleStyle: CellStyle | undefined): RowRule {
+function rowRule(sheetName: string, label: string, sampleStyle: CellStyle | undefined): RowRule {
   if (!label || sampleStyle?.percent || RATIO.test(label)) return "blank";
   // On a balance sheet everything is a year-end level; elsewhere a stock-like
   // label is too uncertain to roll up either way.

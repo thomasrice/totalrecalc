@@ -16,7 +16,8 @@ export interface Cell {
   comment: string | null;
 }
 
-const key = (r: number, c: number) => r * 20000 + c;
+/** One number per cell, for maps and sets (columns never exceed 16,384). */
+export const cellKey = (r: number, c: number) => r * 20000 + c;
 
 export class SheetData {
   readonly meta: SheetMeta;
@@ -31,18 +32,18 @@ export class SheetData {
     this.meta = p.meta;
     this.diff = p.diff;
     for (const [r, c, text, value, style, flags, formula, formatColor, comment] of p.cells) {
-      this.cells.set(key(r, c), { r, c, text, value, style, error: (flags & 1) === 1, calc: flags >> 1, formula, formatColor, comment });
+      this.cells.set(cellKey(r, c), { r, c, text, value, style, error: (flags & 1) === 1, calc: flags >> 1, formula, formatColor, comment });
     }
-    for (const ch of p.diff.changes) this.changes.set(key(ch.r, ch.c), ch);
+    for (const ch of p.diff.changes) this.changes.set(cellKey(ch.r, ch.c), ch);
     this.changedRows = [...new Set(p.diff.changes.map((c) => c.r))].sort((a, b) => a - b);
   }
 
   cell(r: number, c: number): Cell | undefined {
-    return this.cells.get(key(r, c));
+    return this.cells.get(cellKey(r, c));
   }
 
   change(r: number, c: number): CellChange | undefined {
-    return this.changes.get(key(r, c));
+    return this.changes.get(cellKey(r, c));
   }
 
   get changeList(): CellChange[] {
@@ -83,6 +84,11 @@ export function colLetters(col: number): string {
     col = Math.floor((col - 1) / 26);
   }
   return s;
+}
+
+/** "AB" → 28 */
+export function colNumber(letters: string): number {
+  return letters.toUpperCase().split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
 }
 
 export function address(r: number, c: number): string {

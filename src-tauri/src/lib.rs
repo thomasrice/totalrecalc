@@ -93,9 +93,7 @@ async fn sheet(version: u64, index: usize, compare: Option<u64>, state: State<'_
 #[tauri::command]
 async fn sheet_changes(version: u64, index: usize, compare: u64, state: State<'_, AppState>) -> Result<Option<diff::SheetDiff>, String> {
     let shared = current(&state)?;
-    tauri::async_runtime::spawn_blocking(move || session::sheet_changes(&shared, version, index, compare))
-        .await
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || session::sheet_changes(&shared, version, index, compare)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

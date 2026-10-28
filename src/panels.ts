@@ -2,11 +2,11 @@
 
 import type { App } from "./main";
 import type { CellChange, Inspection } from "./types";
-import { SheetData, address, colLetters } from "./sheet";
-import { clock, delta, esc, shortValue } from "./format";
+import { SheetData, address, colLetters, colNumber } from "./sheet";
+import { clock, delta, esc, shortValue, signedPercent } from "./format";
 import { icon } from "./icons";
 
-export interface ChangeRow {
+interface ChangeRow {
   r: number;
   label: string;
   cells: CellChange[];
@@ -77,7 +77,7 @@ export function inspectorHtml(app: App): string {
           )
           .join("")
       : `<div class="muted small">None</div>`;
-  const calcNote = cell?.calc === 1 ? "From the file's cache: Total Recalc's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved is shown." : cell?.calc === 2 ? "Unavailable: the engine could not calculate this and the file holds no saved value." : cell?.formula ? "Calculated by Total Recalc." : cell ? "A constant typed into the workbook." : "Empty cell.";
+  const calcNote = cell?.calc === 1 ? "From the file's cache: Total Recalc's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved is shown." : cell?.calc === 2 ? "Unavailable: the engine could not calculate this and the file holds no saved value." : cell?.formula ? "Calculated by Total Recalc." : cell ? "A constant typed into the workbook." : "Blank cell.";
   return `
     <div class="insp-title" title="${esc([label, header].filter(Boolean).join(" · "))}">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</div>
     <div class="insp-sub">${esc(d.meta.name)}!${address(row, vc.col)}</div>
@@ -144,7 +144,7 @@ export function changeRows(d: SheetData, percent: (style: number) => boolean): C
     }
     const lo = Math.min(...pcts);
     const hi = Math.max(...pcts);
-    const f = (p: number) => (Math.abs(p) < 0.005 ? `0${unit}` : `${p > 0 ? "+" : "−"}${Math.abs(p).toFixed(Math.abs(p) < 1 ? 2 : 1)}${unit}`);
+    const f = (p: number) => signedPercent(p, unit);
     const range = pcts.length ? (Math.abs(hi - lo) < 0.05 ? f(lo) : `${f(lo)} to ${f(hi)}`) : "";
     return {
       r,
@@ -204,7 +204,7 @@ export function formulaHtml(f: string, sheets?: { names: string[]; current: numb
     const ref = /^\$?([A-Z]{1,3})\$?(\d+)/.exec(m[2]);
     const target =
       idx >= 0 && ref
-        ? ` data-sheet="${idx}" data-r="${ref[2]}" data-c="${ref[1].split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0)}" role="button"`
+        ? ` data-sheet="${idx}" data-r="${ref[2]}" data-c="${colNumber(ref[1])}" role="button"`
         : "";
     out += `<span class="${cls}"${target}>${esc(m[0])}</span>`;
     last = i + m[0].length;

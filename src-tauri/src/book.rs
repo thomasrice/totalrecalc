@@ -13,11 +13,22 @@ pub enum Value {
     Empty,
 }
 
+/// Relative tolerance below which two numbers count as the same value.
+const SAME_NUMBER: f64 = 1e-9;
+
 impl Value {
     pub fn as_number(&self) -> Option<f64> {
         match self {
             Value::Number(n) => Some(*n),
             _ => None,
+        }
+    }
+
+    /// Equal, treating numbers that differ only by floating-point noise as equal.
+    pub fn same(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Number(x), Value::Number(y)) => (x - y).abs() <= SAME_NUMBER * x.abs().max(y.abs()).max(1.0),
+            _ => self == other,
         }
     }
 }
@@ -54,7 +65,7 @@ pub struct Cell {
 #[derive(Clone, Debug, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Edge {
-    /// `thin`, `medium`, `thick`, `double`, `dashed`, `dotted`, `hair`.
+    /// `thin`, `medium`, `thick`, `double`, `dashed` or `dotted`.
     pub style: String,
     pub color: String,
 }
@@ -152,11 +163,7 @@ impl Sheet {
 
     /// The header text of a column, from the header row.
     pub fn col_header(&self, col: i32) -> String {
-        self.meta
-            .header_row
-            .and_then(|r| self.cells.get(&(r, col)))
-            .map(|c| c.text.trim().to_string())
-            .unwrap_or_default()
+        self.meta.header_row.and_then(|r| self.cells.get(&(r, col))).map(|c| c.text.trim().to_string()).unwrap_or_default()
     }
 }
 

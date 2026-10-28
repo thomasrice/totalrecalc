@@ -25,6 +25,7 @@ jobs:
       fail-fast: true
       matrix:
         include:
+          # The oldest supported Ubuntu, so the AppImage and .deb run on older glibc.
           - os: ubuntu-22.04
           - os: windows-latest
     runs-on: ${{ matrix.os }}

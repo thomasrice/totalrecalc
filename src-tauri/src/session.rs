@@ -38,7 +38,7 @@ pub struct Version {
 #[derive(Clone, Debug, Serialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchState {
-    /// `loading`, `watching`, `writing`, `error`, `calculating`
+    /// `watching`, `writing`, `error` or `calculating`.
     pub state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -207,7 +207,9 @@ pub fn book_info(shared: &Shared, version: u64, compare: Option<u64>) -> Option<
                     hidden: sh.meta.hidden,
                     edits: x.map(|x| x.edits).unwrap_or(0),
                     results: x.map(|x| x.results).unwrap_or(0),
-                    structure: x.map(|x| x.added_rows.len() + x.removed_rows.len() + x.added_cols.len() + x.removed_cols.len()).unwrap_or(0),
+                    structure: x
+                        .map(|x| x.added_rows.len() + x.removed_rows.len() + x.added_cols.len() + x.removed_cols.len())
+                        .unwrap_or(0),
                     new_sheet: x.is_some_and(|x| x.new_sheet),
                 }
             })

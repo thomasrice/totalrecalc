@@ -32,19 +32,21 @@ export function showHelp(app: App) {
   const o = $("#overlay");
   o.className = "on modal-host";
   const rows: [string, string][] = [
-    ["Arrows · Ctrl+Arrows · PgUp/PgDn", "Move · jump to edge · page"],
+    ["Arrows · Ctrl+Arrows · PgUp/PgDn · Home/End · Tab", "Move · edge of data · page · row start/end · next cell"],
     ["Shift + movement", "Extend the selection"],
     ["Ctrl+PgUp / Ctrl+PgDn", "Previous / next sheet"],
     ["N / Shift+N", "Next / previous edit"],
     ["Space", "Pause or resume live updates"],
     ["F5", "Set baseline"],
     ["D · I (or F2)", "Changes · Inspector"],
-    ["Enter / Backspace", "Follow first input / go back"],
+    ["Enter / Backspace (or Alt+←)", "Follow first input / go back"],
     ["[ / ]", "Collapse to years / expand quarters"],
     ["Ctrl+C · Ctrl+Shift+C", "Copy · copy with context for your agent"],
     ["Ctrl+K · Ctrl+G · Ctrl+F", "Commands · go to · find"],
-    ["Ctrl + scroll · Ctrl 0", "Zoom · reset zoom"],
+    ["Ctrl+O", "Open a workbook"],
+    ["Ctrl + scroll · Ctrl +/- · Ctrl+0", "Zoom · reset zoom"],
     ["T", "Light or dark"],
+    ["? · Esc", "This help · close"],
   ];
   o.innerHTML = `<div class="modal help"><h2>Keyboard</h2>${rows.map(([k, v]) => `<div class="kv"><kbd>${k}</kbd><span>${v}</span></div>`).join("")}<p class="muted small">Vim keys (h j k l, g, G) work too.</p></div>`;
   o.onclick = (e) => {

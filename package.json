@@ -2,6 +2,13 @@
   "name": "totalrecalc",
   "private": true,
   "version": "0.1.0",
+  "description": "A live, read-only spreadsheet viewer for watching an AI agent edit Excel.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thomasrice/totalrecalc.git"
+  },
+  "homepage": "https://totalrecalc.com",
   "type": "module",
   "scripts": {
     "dev": "vite",

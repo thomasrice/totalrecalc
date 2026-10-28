@@ -1,8 +1,11 @@
-/target
 /src-tauri/target
 /src-tauri/gen
 /node_modules
 /dist
 /fixtures/*.json
-!/fixtures/demo*.json
+!/fixtures/demo.json
+# Local workbooks, other than the demo model
+*.xlsx
+*.xlsm
+!/demo/northwind.xlsx
 __pycache__/

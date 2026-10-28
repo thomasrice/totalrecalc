@@ -14,8 +14,8 @@ import { openPalette } from "./palette";
 import { showContextMenu, showHelp, toast } from "./overlays";
 import { handleKey } from "./keys";
 
-export type CompareMode = "baseline" | "latest";
-export type Panel = "changes" | "inspector" | null;
+type CompareMode = "baseline" | "latest";
+type Panel = "changes" | "inspector" | null;
 
 interface FileMemory {
   sheet?: string;
@@ -49,6 +49,11 @@ export class App {
   inspection: Inspection | null = null;
   history: { sheet: number; row: number; col: number }[] = [];
   grid: Grid;
+  /** The sheet the user last asked for, by name; display() honours it. */
+  wantedSheet: string | null = null;
+  /** Whether n/N step through edits only (true unless the version has none). */
+  onlyEdits = true;
+  private inspecting = "";
   private loadToken = 0;
 
   constructor() {
@@ -278,9 +283,6 @@ export class App {
     }
   }
 
-  /** The sheet the user last asked for, by name; display() honours it. */
-  wantedSheet: string | null = null;
-
   /** Put a loaded sheet on screen: keep the place (anchor), or start fresh. */
   applySheet(data: SheetData, place: Anchor | null | "first" | "fresh") {
     const sameSheet = this.data?.meta.name === data.meta.name;
@@ -483,9 +485,6 @@ export class App {
     if (list.length) this.goToChange(dir > 0 ? list[0] : list[list.length - 1]);
   }
 
-  /** Whether n/N step through edits only (true unless the version has none). */
-  onlyEdits = true;
-
   visibleChanges(): CellChange[] {
     const all = this.data?.changeList ?? [];
     return this.onlyEdits ? all.filter((c) => c.kind !== "result") : all;
@@ -617,10 +616,6 @@ export class App {
     await this.writeClipboard(text, `${count} cell${count === 1 ? "" : "s"}${withContext ? " with context" : ""}`);
   }
 
-
-  // ------------------------------------------------------------ keyboard
-
-
   nextVisibleSheet(dir: 1 | -1): number {
     const sheets = this.info?.sheets ?? [];
     for (let k = 1; k <= sheets.length; k++) {
@@ -629,7 +624,6 @@ export class App {
     }
     return this.sheetIndex;
   }
-
 
   zoomBy(f: number) {
     this.grid.setZoom(f === 0 ? 1 : this.grid.getZoom() * f);
@@ -679,8 +673,6 @@ export class App {
     }
     this.renderPanel();
   }
-
-  private inspecting = "";
 
   // ------------------------------------------------------------- render
 
@@ -906,8 +898,6 @@ export class App {
     if (this.panel === "changes") this.highlightChangeRow();
   }
 
-
-
   onPanelClick(e: MouseEvent) {
     const t = e.target as HTMLElement;
     const tab = t.closest<HTMLElement>("[data-tab]")?.dataset.tab;
@@ -938,9 +928,6 @@ export class App {
     document.querySelector(`.chrow[data-r="${row}"]`)?.classList.add("current");
   }
 
-  // ------------------------------------------------------------- overlays
-
-
   hover(row: number | null, col: number | null, x: number, y: number) {
     const tip = $("#tooltip");
     const d = this.data;
@@ -959,15 +946,7 @@ export class App {
     tip.style.top = `${y + 18}px`;
     tip.classList.add("on");
   }
-
-
-
-
-  // ------------------------------------------------------ command palette
-
-
 }
-
 
 interface Point {
   label: string;
@@ -983,17 +962,6 @@ interface Anchor {
   offset: number;
   left: number;
 }
-
-
-
-
-
-/** Changes grouped by row, with a period span, the range of relative moves and a sparkline. */
-
-/** Before/after line for a row of period values. */
-
-/** A formula with its references as chips; with `sheets`, they are clickable. */
-
 
 function occurrence(d: SheetData, row: number): number {
   const label = d.rowLabel(row);

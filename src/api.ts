@@ -20,7 +20,6 @@ export interface Api {
   /** Versions the window still needs; they are never evicted. */
   pinVersions(ids: number[]): Promise<void>;
   inspect(version: number, index: number, r: number, c: number): Promise<Inspection>;
-  latestVersion(): Promise<number | null>;
   initialPath(): Promise<string | null>;
   pickFile(): Promise<string | null>;
   onVersion(cb: (id: number, calculated: boolean) => void): void;
@@ -49,7 +48,6 @@ async function tauriApi(): Promise<Api> {
     sheetChanges: (version, index, compare) => invoke("sheet_changes", { version, index, compare }),
     pinVersions: (ids) => invoke("pin_versions", { ids }),
     inspect: (version, index, r, c) => invoke("inspect", { version, index, r, c }),
-    latestVersion: () => invoke("latest_version"),
     initialPath: () => invoke("initial_path"),
     async pickFile() {
       const picked = await dialog.open({
@@ -144,7 +142,6 @@ function fixtureApi(name: string): Api {
     async inspect() {
       return { inputs: [], usedBy: [] };
     },
-    latestVersion: async () => (await load()).info.version,
     initialPath: async () => (name === "none" ? null : name),
     pickFile: async () => null,
     onVersion(cb) {
