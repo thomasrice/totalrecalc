@@ -357,7 +357,7 @@ export class Grid {
     const gf = place("grpFrozen", ROW_HEAD_W, 0, fw, gh, 0, 0);
     const gs = place("grpScroll", ROW_HEAD_W + fw, 0, scrollW, gh, -fw - sl, 0);
     gf.cells.innerHTML = gh ? this.levelSwitchHtml(fw) + this.groupHtml(0, this.frozenC) : "";
-    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) : "";
+    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) + this.forecastLabelHtml() : "";
 
     // Row numbers.
     place("rowFrozen", 0, hh, ROW_HEAD_W, fh, 0, 0).cells.innerHTML = this.rowNumHtml(0, this.frozenR);
@@ -473,11 +473,8 @@ export class Grid {
       const label = vc.kind === "sheet" ? colLetters(vc.col) : "Σ";
       const on = ci >= s0 && ci <= s1 ? " on" : "";
       const add = vc.kind === "sheet" && added.has(vc.col) ? " added" : "";
-      // The first estimate column is marked "Forecast" in place of its letter.
       const fc = ci === this.forecastCol;
-      out.push(
-        `<div class="hd${on}${add}${vc.kind === "derived" ? " derived" : ""}${fc ? " fc" : ""}" style="left:${x}px;width:${w}px"${fc ? ` title="Column ${label}: estimates start here"` : ""}>${fc ? "Forecast" : label}</div>`,
-      );
+      out.push(`<div class="hd${on}${add}${vc.kind === "derived" ? " derived" : ""}${fc ? " fc" : ""}" style="left:${x}px;width:${w}px"${fc ? ` title="Estimates start here"` : ""}>${label}</div>`);
     }
     return out.join("");
   }
@@ -537,6 +534,18 @@ export class Grid {
       else if (kind === "E" && sawActual) return ci;
     }
     return -1;
+  }
+
+  /** "Forecast →" beside the boundary, moved clear of a year label that starts there. */
+  private forecastLabelHtml(): string {
+    const ci = this.forecastCol;
+    if (ci < this.frozenC) return "";
+    const x = this.colX[ci];
+    const yearStartsHere = this.groups.some((g) => {
+      const lo = Math.min(...g.quarters.map((c) => this.colIndex.get(c) ?? Infinity));
+      return Number.isFinite(lo) && Math.abs(this.colX[lo] - x) < 90;
+    });
+    return `<div class="fc-label" style="left:${x + (yearStartsHere ? 78 : 6)}px">Forecast</div>`;
   }
 
   private levelSwitchHtml(width: number, compact = false): string {
@@ -638,6 +647,17 @@ export class Grid {
       const left = this.colX[col] - this.frozenW;
       if (left < v.scrollLeft || left + 120 > v.scrollLeft + viewW) v.scrollLeft = Math.max(0, left - viewW / 3);
     }
+  }
+
+  /** Whether a sheet cell is currently visible (in a frozen pane or the scrolled view). */
+  isOnScreen(row: number, col: number): boolean {
+    const ri = this.rowIndex.get(row);
+    const ci = this.colIndex.get(col);
+    if (ri === undefined || ci === undefined) return false;
+    const v = this.viewport;
+    const inRows = ri < this.frozenR || (this.rowY[ri + 1] - this.frozenH > v.scrollTop && this.rowY[ri] - this.frozenH < v.scrollTop + v.clientHeight - this.headH - this.frozenH);
+    const inCols = ci < this.frozenC || (this.colX[ci + 1] - this.frozenW > v.scrollLeft && this.colX[ci] - this.frozenW < v.scrollLeft + v.clientWidth - ROW_HEAD_W - this.frozenW);
+    return inRows && inCols;
   }
 
   get scrollPos() {
@@ -764,6 +784,8 @@ export class Grid {
       .map(([ci, k]) => `<i class="t-${k}" style="left:${((this.colX[ci] / totalW) * 100).toFixed(3)}%"></i>`)
       .join("");
     this.ticksY.style.top = `${this.headH}px`;
+    this.ticksY.hidden = this.headH + totalH <= this.viewport.clientHeight;
+    this.ticksX.hidden = ROW_HEAD_W + totalW <= this.viewport.clientWidth;
     this.ticksX.style.left = `${ROW_HEAD_W}px`;
   }
 }

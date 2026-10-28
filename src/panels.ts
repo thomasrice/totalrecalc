@@ -32,7 +32,7 @@ export function changesHtml(app: App): string {
   const rowHtml = (g: ChangeRow) => `
     <button class="chrow ${g.edited ? "edited" : "result"}" data-r="${g.r}" data-c="${g.cells[0].c}">
       <span class="bar"></span>
-      <span class="lbl">${esc(g.label || `Row ${g.r}`)}</span>
+      <span class="lbl" title="${esc(g.label || `Row ${g.r}`)}">${esc(g.label || `Row ${g.r}`)}</span>
       <span class="meta">${g.cells.length} cell${g.cells.length === 1 ? "" : "s"}${g.span ? ` · ${esc(g.span)}` : ""}</span>
       ${g.range ? `<span class="rng">${esc(g.range)}</span>` : ""}
       ${g.spark ? `<span class="spark">${g.spark}</span>` : ""}
@@ -61,7 +61,7 @@ export function inspectorHtml(app: App): string {
   const d = app.data!;
   const row = app.grid.rowOf(app.grid.sel.row);
   const vc = app.grid.colOf(app.grid.sel.col);
-  if (!vc || vc.kind !== "sheet") return `<div class="empty-note">A derived annual column is computed by Cellwake from the four quarters; it is not in the workbook.</div>`;
+  if (!vc || vc.kind !== "sheet") return `<div class="empty-note">A derived annual column is computed by Total Recalc from the four quarters; it is not in the workbook.</div>`;
   const cell = d.cell(row, vc.col);
   const ch = d.change(row, vc.col);
   const label = d.rowLabel(row);
@@ -77,9 +77,9 @@ export function inspectorHtml(app: App): string {
           )
           .join("")
       : `<div class="muted small">None</div>`;
-  const calcNote = cell?.calc === 1 ? "From the file's cache: Cellwake's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved is shown." : cell?.calc === 2 ? "Unavailable: the engine could not calculate this and the file holds no saved value." : cell?.formula ? "Calculated by Cellwake." : cell ? "A constant typed into the workbook." : "Empty cell.";
+  const calcNote = cell?.calc === 1 ? "From the file's cache: Total Recalc's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved is shown." : cell?.calc === 2 ? "Unavailable: the engine could not calculate this and the file holds no saved value." : cell?.formula ? "Calculated by Total Recalc." : cell ? "A constant typed into the workbook." : "Empty cell.";
   return `
-    <div class="insp-title">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</div>
+    <div class="insp-title" title="${esc([label, header].filter(Boolean).join(" · "))}">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</div>
     <div class="insp-sub">${esc(d.meta.name)}!${address(row, vc.col)}</div>
     <div class="insp-value ${cell?.error ? "err" : ""}">${esc(cell?.text || "blank")}</div>
     ${cell && typeof cell.value === "number" && cell.text !== String(cell.value) ? `<div class="insp-raw">${Number(cell.value.toPrecision(12))}</div>` : ""}

@@ -1,4 +1,4 @@
-//! The workbook as Cellwake sees it: plain owned data, independent of the
+//! The workbook as Total Recalc sees it: plain owned data, independent of the
 //! calculation engine, so versions can be kept, diffed and sent to the UI.
 
 use serde::Serialize;

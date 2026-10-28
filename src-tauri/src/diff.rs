@@ -78,6 +78,10 @@ pub struct Diff {
 struct Alignment {
     rows: HashMap<i32, i32>,
     cols: HashMap<i32, i32>,
+    /// The old sheet's extent: references beyond it point at nothing that
+    /// moved, so they map to themselves.
+    old_max_row: i32,
+    old_max_col: i32,
     added_rows: Vec<i32>,
     removed_rows: Vec<(i32, i32)>, // (old row, new row it sits after)
     added_cols: Vec<i32>,
@@ -245,6 +249,8 @@ fn align(old: &Sheet, new: &Sheet, old_book: &Book, new_book: &Book) -> Alignmen
     Alignment {
         rows,
         cols,
+        old_max_row: old.meta.max_row,
+        old_max_col: old.meta.max_col,
         added_rows: added_rows.into_iter().filter(|r| new.cells.range((*r, 0)..(*r + 1, 0)).next().is_some()).collect(),
         removed_rows: removed_rows
             .into_iter()
@@ -298,10 +304,12 @@ fn remap_formula(formula: &str, own_sheet: &str, alignments: &HashMap<&str, Alig
         let map = |e: formula::End| -> Option<formula::End> {
             Some(formula::End {
                 col: match e.col {
+                    Some(c) if c > al.old_max_col => Some(c),
                     Some(c) => Some(*al.cols.get(&c)?),
                     None => None,
                 },
                 row: match e.row {
+                    Some(r) if r > al.old_max_row => Some(r),
                     Some(r) => Some(*al.rows.get(&r)?),
                     None => None,
                 },

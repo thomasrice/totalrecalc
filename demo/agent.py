@@ -1,5 +1,5 @@
-"""Play an AI agent revising the Northwind model, so you can watch Cellwake
-follow along. Open the model in Cellwake first, then run:
+"""Play an AI agent revising the Northwind model, so you can watch Total Recalc
+follow along. Open the model in Total Recalc first, then run:
 
     uv run --with openpyxl demo/agent.py demo/northwind.xlsx
 
@@ -27,7 +27,7 @@ def main() -> None:
     path = sys.argv[1] if len(sys.argv) > 1 else "demo/northwind.xlsx"
     pause = float(sys.argv[2]) if len(sys.argv) > 2 else 6.0
     save_atomically(build(Knobs()), path)
-    print(f"Reset {path}. Watching for changes? Open it in Cellwake now.")
+    print(f"Reset {path}. Watching for changes? Open it in Total Recalc now.")
     time.sleep(pause)
     for n, (say, knobs) in enumerate(STEPS, start=1):
         print(f"[{n}/{len(STEPS)}] {say}")

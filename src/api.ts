@@ -1,5 +1,5 @@
 // The bridge to the Rust side. In a plain browser (no Tauri), it serves
-// fixtures exported by `cellwake-dump`, so the UI can be developed and
+// fixtures exported by `totalrecalc-dump`, so the UI can be developed and
 // photographed without the desktop shell: open `/?fixture=demo`.
 
 import type { BookInfo, Inspection, SheetDiff, SheetPayload, SheetSummary, WatchState } from "./types";

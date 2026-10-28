@@ -1,4 +1,4 @@
-// Keyboard: Excel's movement keys, plus Cellwake's own shortcuts.
+// Keyboard: Excel's movement keys, plus Total Recalc's own shortcuts.
 
 import type { App } from "./main";
 import { $ } from "./dom";
@@ -22,6 +22,8 @@ export function handleKey(app: App, e: KeyboardEvent) {
       e.preventDefault();
       void app.pick();
     }
+    if (e.key === "t") app.toggleTheme();
+    if (e.key === "?") showHelp(app);
     return;
   }
   const s = app.grid.sel;

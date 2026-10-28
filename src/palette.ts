@@ -18,7 +18,7 @@ export function openPalette(app: App, mode: "all" | "go" | "find" = "all") {
   const o = $("#overlay");
   o.className = "on modal-host";
   const placeholder = mode === "go" ? "Go to a cell (B12) or a row label…" : mode === "find" ? "Find on this sheet…" : "Type a command, sheet or row label…";
-  o.innerHTML = `<div class="modal palette"><input id="pal-in" placeholder="${placeholder}" autocomplete="off" spellcheck="false" /><div id="pal-list"></div></div>`;
+  o.innerHTML = `<div class="modal palette"><input id="pal-in" placeholder="${placeholder}" autocomplete="off" spellcheck="false" /><div id="pal-list"></div><div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>Esc</kbd> close</span></div></div>`;
   const input = $<HTMLInputElement>("#pal-in");
   const list = $("#pal-list");
   let items: PaletteItem[] = [];
@@ -86,7 +86,7 @@ function paletteItems(app: App, q: string, mode: "all" | "go" | "find"): Palette
       { kind: "Action", title: "Set baseline to this version", hint: "F5", run: () => app.setBaseline() },
       { kind: "Action", title: "Compare with the baseline", run: () => app.setCompare("baseline") },
       { kind: "Action", title: "Compare with the previous version", run: () => app.setCompare("latest") },
-      { kind: "Action", title: "Next change", hint: "N", run: () => void app.stepChange(1) },
+      { kind: "Action", title: "Next edit", hint: "N", run: () => void app.stepChange(1) },
       { kind: "Action", title: "Show changes", hint: "D", run: () => app.togglePanel("changes") },
       { kind: "Action", title: "Inspect the selected cell", hint: "I", run: () => app.togglePanel("inspector") },
       { kind: "Action", title: "Copy with context", hint: "Ctrl Shift C", run: () => void app.copy(true) },

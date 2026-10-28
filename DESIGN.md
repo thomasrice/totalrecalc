@@ -1,6 +1,6 @@
-# Cellwake design
+# Total Recalc design
 
-_How Cellwake should look and behave. Revised after two independent design reviews._
+_How Total Recalc should look and behave. Revised after two independent design reviews._
 
 ## What the app is for
 
@@ -143,7 +143,7 @@ Every version is recalculated with the built-in engine. Each value is one of: **
 
 ## Starting the app
 
-`cellwake path/to/model.xlsx`, a file association, or dragging a file onto the window or the `.exe`. With no file: a quiet window with an Open button and a drop zone. Window title: `model.xlsx — Cellwake`.
+`totalrecalc path/to/model.xlsx`, a file association, or dragging a file onto the window or the `.exe`. With no file: a quiet window with an Open button and a drop zone. Window title: `model.xlsx — Total Recalc`.
 
 ## Keyboard
 
@@ -184,7 +184,7 @@ Small touches that make the app feel made with care, none of which get in the wa
 - **The live dot** in the top bar breathes slowly while watching and turns into a crisp pause glyph when paused.
 - **Command palette** (`Ctrl+K`): every action, sheet and row label in one searchable list.
 - **Copy feedback**: a small toast shows exactly what went to the clipboard.
-- **A first-run window** with the Cellwake mark and a drop zone that glows when a file is dragged over it.
+- **A first-run window** with the Total Recalc mark and a drop zone that glows when a file is dragged over it.
 - **Remembered state** per file: last sheet, scroll position, collapsed years and panel widths.
 
 ## Out of scope for version one

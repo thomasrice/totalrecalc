@@ -422,7 +422,7 @@ fn set_watch(shared: &Shared, notify: &dyn Fn(Notice), w: WatchState) {
     notify(Notice::Watch(w));
 }
 
-/// Load a file once, synchronously, fully calculated (for `cellwake-dump`).
+/// Load a file once, synchronously, fully calculated (for `totalrecalc-dump`).
 pub fn load_once(shared: &Shared, path: &Path) -> Result<u64, String> {
     shared.lock().unwrap().path = path.to_path_buf();
     let bytes = std::fs::read(path).map_err(|e| format!("Cannot read the file: {e}"))?;

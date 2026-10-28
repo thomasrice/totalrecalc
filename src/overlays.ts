@@ -35,7 +35,7 @@ export function showHelp(app: App) {
     ["Arrows · Ctrl+Arrows · PgUp/PgDn", "Move · jump to edge · page"],
     ["Shift + movement", "Extend the selection"],
     ["Ctrl+PgUp / Ctrl+PgDn", "Previous / next sheet"],
-    ["N / Shift+N", "Next / previous change"],
+    ["N / Shift+N", "Next / previous edit"],
     ["Space", "Pause or resume live updates"],
     ["F5", "Set baseline"],
     ["D · I (or F2)", "Changes · Inspector"],

@@ -202,6 +202,12 @@ type CellKey = (usize, i32, i32);
 static UNFAITHFUL: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)\b(INDIRECT|OFFSET|CELL|INFO)\s*\(|\[\d+\]").unwrap());
 
+/// Whether a formula uses a construct the engine cannot evaluate faithfully,
+/// looking only outside string literals.
+fn unfaithful(formula: &str) -> bool {
+    formula.split('"').step_by(2).any(|code| UNFAITHFUL.is_match(code))
+}
+
 /// After recalculation, decide which formula cells must show the file's saved
 /// result instead of the engine's. Only cells with an explicit reason qualify:
 /// the engine produced an error where the file saved a value, or the formula
@@ -217,7 +223,8 @@ fn reconcile(book: &mut Book, cached: &Book) {
         for (&(r, c), cell) in &sheet.cells {
             let Some(f) = cell.formula.as_deref() else { continue };
             let saved_ok = saved.and_then(|x| x.cells.get(&(r, c))).is_some_and(|s| s.value != Value::Empty && !s.error);
-            if (cell.error && saved_ok) || UNFAITHFUL.is_match(f) {
+            let unsupported = cell.error && matches!(cell.text.as_str(), "#N/IMPL!" | "#N/IMPL" | "#ERROR!");
+            if (cell.error && saved_ok) || unsupported || unfaithful(f) {
                 doubtful.insert((si, r, c));
             }
         }

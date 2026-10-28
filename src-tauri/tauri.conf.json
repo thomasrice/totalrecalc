@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cellwake",
+  "productName": "Total Recalc",
   "version": "0.1.0",
-  "identifier": "dev.cellwake.app",
+  "identifier": "com.totalrecalc.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Cellwake",
+        "title": "Total Recalc",
         "width": 1440,
         "height": 900,
         "minWidth": 720,
@@ -37,7 +37,7 @@
     ],
     "category": "Productivity",
     "shortDescription": "Watch a spreadsheet while an AI agent edits it",
-    "longDescription": "Cellwake is a fast, read-only spreadsheet viewer that refreshes itself whenever the file changes, keeps your place, and shows exactly what the agent edited and what recalculated as a result.",
+    "longDescription": "Total Recalc is a fast, read-only spreadsheet viewer that refreshes itself whenever the file changes, keeps your place, and shows exactly what the agent edited and what recalculated as a result.",
     "fileAssociations": [
       { "ext": ["xlsx", "xlsm"], "name": "Excel workbook", "role": "Viewer" }
     ]

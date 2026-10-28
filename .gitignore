@@ -5,3 +5,4 @@
 /dist
 /fixtures/*.json
 !/fixtures/demo*.json
+__pycache__/

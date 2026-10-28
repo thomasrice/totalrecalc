@@ -1,16 +1,16 @@
 //! Load workbooks and print what the window would receive, as JSON.
 //!
-//! `cellwake-dump model.xlsx` prints one version. `cellwake-dump old.xlsx new.xlsx`
+//! `totalrecalc-dump model.xlsx` prints one version. `totalrecalc-dump old.xlsx new.xlsx`
 //! prints the new version compared with the old one. The output is the
 //! fixture format the frontend's browser mode reads.
 
-use cellwake_lib::session::{self, Session, Shared};
+use totalrecalc_lib::session::{self, Session, Shared};
 use std::sync::{Arc, Mutex};
 
 fn main() {
     let paths: Vec<String> = std::env::args().skip(1).collect();
     if paths.is_empty() || paths.len() > 2 {
-        eprintln!("usage: cellwake-dump <file.xlsx> [<newer.xlsx>]");
+        eprintln!("usage: totalrecalc-dump <file.xlsx> [<newer.xlsx>]");
         std::process::exit(2);
     }
     let shared: Shared = Arc::new(Mutex::new(Session::default()));

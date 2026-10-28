@@ -2,12 +2,12 @@ import { defineConfig, type Plugin } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 
-// In browser mode the UI reads JSON fixtures made by `cellwake-dump`.
-// They are served from ./fixtures, or from $CELLWAKE_FIXTURES when set.
+// In browser mode the UI reads JSON fixtures made by `totalrecalc-dump`.
+// They are served from ./fixtures, or from $TOTALRECALC_FIXTURES when set.
 function fixtures(): Plugin {
-  const dir = process.env.CELLWAKE_FIXTURES ?? path.resolve(__dirname, "fixtures");
+  const dir = process.env.TOTALRECALC_FIXTURES ?? path.resolve(__dirname, "fixtures");
   return {
-    name: "cellwake-fixtures",
+    name: "totalrecalc-fixtures",
     configureServer(server) {
       server.middlewares.use("/fixtures/", (req, res, next) => {
         const file = path.join(dir, decodeURIComponent((req.url ?? "").split("?")[0]));

@@ -10,5 +10,5 @@ fn main() {
         // SAFETY: set before any other thread starts.
         unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
     }
-    cellwake_lib::run()
+    totalrecalc_lib::run()
 }

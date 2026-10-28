@@ -1,4 +1,4 @@
-/* Cellwake. Light by default (workbook-faithful), dark optional. */
+/* Total Recalc. Light by default (workbook-faithful), dark optional. */
 
 :root {
   --bg: #f6f6f4;
@@ -28,7 +28,7 @@
   --wake-pulse: rgba(255, 190, 70, 0.38);
   --wake-pulse-violet: rgba(124, 77, 219, 0.22);
   --radius: 8px;
-  --font: "Cellwake Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font: "Total Recalc Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
@@ -218,6 +218,8 @@ kbd {
   border-color: var(--accent-ring);
 }
 .live.error {
+  max-width: 340px;
+  white-space: nowrap;
   color: var(--red);
   background: color-mix(in srgb, var(--red) 8%, transparent);
   border-color: color-mix(in srgb, var(--red) 25%, transparent);
@@ -453,6 +455,27 @@ body.panel-open #body {
 #rail .ini {
   display: none;
 }
+/* The top bar gives way in a fixed order; the file name always stays. */
+@media (max-width: 1200px) {
+  #topbar .version .muted,
+  #topbar [data-act="baseline"] .label {
+    display: none;
+  }
+}
+@media (max-width: 960px) {
+  #topbar .hl-word,
+  #topbar .headline .muted,
+  #topbar .folder {
+    display: none;
+  }
+  #topbar .version {
+    display: none;
+  }
+}
+#topbar .file {
+  flex-shrink: 0;
+  max-width: 34%;
+}
 @media (max-width: 980px) {
   #body {
     grid-template-columns: 56px 1fr 0;
@@ -473,17 +496,24 @@ body.panel-open #body {
     font-size: 12px;
   }
   #rail .sheet {
-    padding: 0 6px;
+    padding: 4px 6px 0;
+    height: 36px;
   }
   #rail .badge,
   #rail .dot-results {
     position: absolute;
-    right: 2px;
-    top: 2px;
+    right: 3px;
+    top: 3px;
     min-width: 0;
-    height: 14px;
-    padding: 0 4px;
-    font-size: 9.5px;
+    height: 12px;
+    padding: 0 3px;
+    font-size: 9px;
+    margin: 0;
+  }
+  #rail .dot-results {
+    width: 6px;
+    height: 6px;
+    padding: 0;
   }
 }
 
@@ -784,7 +814,7 @@ body.panel-open #body {
   box-shadow: inset 3px 0 0 var(--amber-bar), inset 0 0 0 1px var(--amber-bar), inset 0 0 0 9999px var(--amber-tint);
 }
 .c.k-formula {
-  box-shadow: inset 3px 0 0 var(--violet), inset 0 0 0 1px color-mix(in srgb, var(--violet) 70%, transparent);
+  box-shadow: inset 3px 0 0 var(--violet), inset 0 0 0 1px color-mix(in srgb, var(--violet) 40%, transparent);
 }
 .c.k-result {
   box-shadow: inset 0 0 0 9999px var(--amber-tint-faint);
@@ -975,10 +1005,20 @@ body.panel-open #body {
 .hd.fc {
   box-shadow: inset 1.5px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
   color: var(--accent);
+}
+.fc-label {
+  position: absolute;
+  top: 4px;
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.fc-label::after {
+  content: " →";
 }
 
 /* Change ticks along the scrollbars. */
@@ -1507,6 +1547,19 @@ body.panel-open #body {
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
+.pal-foot {
+  display: flex;
+  gap: 16px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+.pal-foot kbd {
+  margin-right: 3px;
+  font-size: 10px;
+  padding: 0 4px;
+}
 .palette input {
   width: 100%;
   height: 52px;
@@ -1576,7 +1629,8 @@ body.panel-open #body {
 
 .menu {
   position: fixed;
-  width: 230px;
+  min-width: 260px;
+  white-space: nowrap;
   padding: 5px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1663,6 +1717,15 @@ body.drop-over #gridwrap::after {
   margin: 0 0 14px;
   color: var(--muted);
   font-size: 15px;
+}
+.start-card p.tagline {
+  margin: -2px 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--wake);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .drop-hint {
   color: var(--faint);

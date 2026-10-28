@@ -81,9 +81,14 @@ const RATIO = /(margin|growth|per share|\/ ?sh|ratio|\brate\b|yield|days|multipl
 const FLOW = /(revenue|sales|income|profit|loss|ebit|ebitda|cost|expense|opex|capex|capital expenditure|cash flow|free cash|dividend|interest|tax|depreciation|amortisation|amortization|r&d|research|marketing|administrative|g&a|s&m|cogs|gross|operating|bookings|shipments|units|volume|purchases|repayment|issuance|proceeds|payments)/i;
 
 /** How a row should roll up from quarters to a year. */
+const STOCK = /(liabilit|assets|payable|receivable|debt|borrowing|equity|cash and|inventor|balance|provision|reserve|retained)/i;
+
 export function rowRule(sheetName: string, label: string, sampleStyle: CellStyle | undefined): RowRule {
   if (!label || sampleStyle?.percent || RATIO.test(label)) return "blank";
-  if (/balance/i.test(sheetName)) return "last";
+  // On a balance sheet everything is a year-end level; elsewhere a stock-like
+  // label is too uncertain to roll up either way.
+  if (/balance|^bs\b/i.test(sheetName)) return "last";
+  if (STOCK.test(label)) return "blank";
   if (FLOW.test(label)) return "sum";
   return "blank";
 }

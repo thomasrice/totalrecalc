@@ -58,7 +58,7 @@ fn open_file(path: String, app: tauri::AppHandle, state: State<AppState>) -> Res
     }
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_title(&format!("{name} — Cellwake"));
+        let _ = w.set_title(&format!("{name} — Total Recalc"));
     }
     let handle = app.clone();
     session::watch(shared, path.clone(), stop, move |notice| match notice {
@@ -125,5 +125,5 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![open_file, book_info, sheet, sheet_changes, inspect, pin_versions, initial_path])
         .run(tauri::generate_context!())
-        .expect("error while running Cellwake");
+        .expect("error while running Total Recalc");
 }

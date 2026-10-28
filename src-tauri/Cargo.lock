@@ -317,25 +317,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cellwake"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ironcalc",
- "ironcalc_base",
- "notify",
- "quick-xml",
- "regex",
- "serde",
- "serde_json",
- "similar",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "zip",
-]
-
-[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3870,6 +3851,25 @@ name = "toml_writer"
 version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
+
+[[package]]
+name = "totalrecalc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ironcalc",
+ "ironcalc_base",
+ "notify",
+ "quick-xml",
+ "regex",
+ "serde",
+ "serde_json",
+ "similar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "zip",
+]
 
 [[package]]
 name = "tower"

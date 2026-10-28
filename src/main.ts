@@ -36,6 +36,7 @@ export class App {
   previousBaseline: number | null = null;
   compareMode: CompareMode = "baseline";
   paused = false;
+  private openToken = 0;
   /** Versions that arrived while paused. */
   pending = new Set<number>();
   sheetIndex = 0;
@@ -67,7 +68,7 @@ export class App {
     // squeezes word spaces; styles.css compensates under this class.
     const ua = navigator.userAgent;
     if (/Linux/.test(ua) && /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) document.documentElement.classList.add("webkitgtk");
-    this.theme = (localStorage.getItem("cellwake.theme") as Theme) || "light";
+    this.theme = (localStorage.getItem("totalrecalc.theme") as Theme) || "light";
     this.renderShell();
     this.applyTheme();
     this.api = await createApi();
@@ -91,12 +92,13 @@ export class App {
     document.body.classList.add("empty");
     $("#start").innerHTML = `
       <div class="start-card">
-        <img class="start-mark" src="/cellwake-mark.svg" alt="" />
-        <h1>Cellwake</h1>
+        <img class="start-mark" src="/totalrecalc-mark.svg" alt="" />
+        <h1>Total Recalc</h1>
+        <p class="tagline">Open your mind. Not your file.</p>
         <p>Watch a spreadsheet while an AI agent edits it.</p>
         <button class="primary" id="open-btn">${icon("open")} Open a workbook…</button>
         <div class="drop-hint">or drop an <b>.xlsx</b> file anywhere</div>
-        <div class="start-foot">Read-only. Cellwake never locks or writes your file.</div>
+        <div class="start-foot">Read-only: Total Recalc never locks or writes your file.</div>
       </div>`;
     $("#open-btn").onclick = () => this.pick();
   }
@@ -119,8 +121,10 @@ export class App {
     this.watch = { state: "loading" };
     this.renderTopBar();
     $("#loading").classList.add("on");
+    const opening = ++this.openToken;
     try {
       const opened = await this.api.openFile(path);
+      if (opening !== this.openToken) return;
       this.path = opened.path;
     } catch (e) {
       $("#loading").classList.remove("on");
@@ -135,7 +139,7 @@ export class App {
 
   memory(): FileMemory {
     try {
-      return JSON.parse(localStorage.getItem(`cellwake.file:${this.path}`) ?? "{}");
+      return JSON.parse(localStorage.getItem(`totalrecalc.file:${this.path}`) ?? "{}");
     } catch {
       return {};
     }
@@ -150,7 +154,7 @@ export class App {
       scroll: { ...(this.memory().scroll ?? {}), [this.data.meta.name]: this.grid.scrollPos },
     };
     try {
-      localStorage.setItem(`cellwake.file:${this.path}`, JSON.stringify(mem));
+      localStorage.setItem(`totalrecalc.file:${this.path}`, JSON.stringify(mem));
     } catch {
       /* storage unavailable */
     }
@@ -199,7 +203,7 @@ export class App {
       }
       if (token !== this.loadToken) return;
       // Stay on the same sheet by name, even if sheets were added or reordered.
-      const wanted = this.data?.meta.name ?? this.memory().sheet;
+      const wanted = this.wantedSheet ?? this.data?.meta.name ?? this.memory().sheet;
       let index = info.sheets.findIndex((s) => s.name === wanted);
       if (index < 0) index = prevDisplayed === null ? Math.max(0, info.sheets.findIndex((s) => !s.hidden)) : Math.min(this.sheetIndex, info.sheets.length - 1);
       const payload = await this.api.sheet(id, index, ref !== id ? ref : undefined);
@@ -216,7 +220,11 @@ export class App {
         if (token !== this.loadToken) return;
         if (fresh) this.grid.wake(fresh.changes, reducedMotion.matches);
         const update = await this.api.bookInfo(id, prevDisplayed);
-        if (token === this.loadToken) toast(this.updateSentence(update), "update");
+        if (token !== this.loadToken) return;
+        // If nothing that changed is on screen, offer to go there.
+        const seen = (fresh?.changes ?? []).some((ch) => this.grid.isOnScreen(ch.r, ch.c));
+        const hasEdits = update.edits + update.rowsAdded > 0;
+        toast(this.updateSentence(update), "update", !seen && (hasEdits || update.results) ? { label: "Show", run: () => void this.stepChange(1) } : undefined);
       }
     } catch (e) {
       if (token === this.loadToken) toast(`Could not show that version: ${e}`, "info");
@@ -224,28 +232,39 @@ export class App {
   }
 
   updateSentence(i: BookInfo): string {
+    const n = (x: number) => x.toLocaleString("en-US");
     const parts: string[] = [];
-    if (i.edits) parts.push(`${i.edits} edit${i.edits === 1 ? "" : "s"}`);
-    if (i.results) parts.push(`${i.results} result${i.results === 1 ? "" : "s"}`);
-    if (i.rowsAdded) parts.push(`${i.rowsAdded} row${i.rowsAdded === 1 ? "" : "s"} added`);
-    if (i.rowsRemoved) parts.push(`${i.rowsRemoved} removed`);
+    const edited = i.sheets.filter((s) => s.edits + s.structure > 0);
+    const where = edited.length === 1 ? ` on ${edited[0].name}` : edited.length > 1 ? ` on ${edited.length} sheets` : "";
+    if (i.edits) parts.push(`${n(i.edits)} edit${i.edits === 1 ? "" : "s"}${where}`);
+    if (i.results) parts.push(`${n(i.results)} recalculated`);
+    if (i.rowsAdded) parts.push(`${n(i.rowsAdded)} row${i.rowsAdded === 1 ? "" : "s"} added`);
+    if (i.rowsRemoved) parts.push(`${n(i.rowsRemoved)} removed`);
     return parts.length ? `Updated · ${parts.join(" · ")}` : "Updated · no visible changes";
   }
 
-  /** Switch to another sheet of the version on screen. */
-  async loadSheet() {
+  /**
+   * Switch to another sheet. The index is committed together with the sheet's
+   * data, so the grid and everything that reads `sheetIndex` always agree. If
+   * a newer version arrived while this was in flight (and its display was
+   * abandoned for this one), show it now.
+   */
+  async loadSheet(index = this.sheetIndex) {
     if (!this.info || this.displayed === null) return;
     const token = ++this.loadToken;
-    const ref = this.compareRef(this.displayed);
+    this.wantedSheet = this.info.sheets[index]?.name ?? null;
+    const version = this.displayed;
+    const ref = this.compareRef(version);
     // Large sheets take a moment to arrive; say so if it is noticeable.
     const slow = window.setTimeout(() => {
-      $("#loading span").textContent = `Loading ${this.info?.sheets[this.sheetIndex]?.name ?? "sheet"}…`;
+      $("#loading span").textContent = `Loading ${this.info?.sheets[index]?.name ?? "sheet"}…`;
       $("#loading").classList.add("on");
     }, 180);
     try {
       this.remember();
-      const payload = await this.api.sheet(this.displayed, this.sheetIndex, ref !== this.displayed ? ref : undefined);
+      const payload = await this.api.sheet(version, index, ref !== version ? ref : undefined);
       if (token !== this.loadToken) return;
+      this.sheetIndex = index;
       this.applySheet(new SheetData(payload), "fresh");
     } catch (e) {
       if (token === this.loadToken) toast(`Could not load the sheet: ${e}`, "info");
@@ -254,7 +273,13 @@ export class App {
       $("#loading").classList.remove("on");
       $("#loading span").textContent = "Reading workbook…";
     }
+    if (token === this.loadToken && !this.paused && this.latest !== null && this.latest !== this.displayed) {
+      void this.display(this.latest, { announce: true });
+    }
   }
+
+  /** The sheet the user last asked for, by name; display() honours it. */
+  wantedSheet: string | null = null;
 
   /** Put a loaded sheet on screen: keep the place (anchor), or start fresh. */
   applySheet(data: SheetData, place: Anchor | null | "first" | "fresh") {
@@ -378,8 +403,7 @@ export class App {
 
   async switchSheet(i: number) {
     if (!this.info || i < 0 || i >= this.info.sheets.length || i === this.sheetIndex) return;
-    this.sheetIndex = i;
-    await this.loadSheet();
+    await this.loadSheet(i);
     this.grid.focus();
   }
 
@@ -425,7 +449,7 @@ export class App {
 
   toggleTheme() {
     this.theme = this.theme === "light" ? "dark" : "light";
-    localStorage.setItem("cellwake.theme", this.theme);
+    localStorage.setItem("totalrecalc.theme", this.theme);
     this.applyTheme();
     this.renderTopBar();
   }
@@ -449,8 +473,7 @@ export class App {
       const i = (this.sheetIndex + dir * k + n) % n;
       const s = this.info.sheets[i];
       if (this.onlyEdits ? s.edits + s.structure > 0 : s.results > 0) {
-        this.sheetIndex = i;
-        await this.loadSheet();
+        await this.loadSheet(i);
         const l = this.visibleChanges();
         if (l.length) this.goToChange(dir > 0 ? l[0] : l[l.length - 1]);
         this.flashRail(i);
@@ -521,8 +544,7 @@ export class App {
   async jumpTo(sheetIndex: number, r: number, c: number, record = true) {
     if (record && this.data) this.history.push({ sheet: this.sheetIndex, row: this.grid.rowOf(this.grid.sel.row) ?? 1, col: this.currentCol() ?? 1 });
     if (sheetIndex !== this.sheetIndex) {
-      this.sheetIndex = sheetIndex;
-      await this.loadSheet();
+      await this.loadSheet(sheetIndex);
     }
     let vc = this.grid.viewColOf(c);
     if (vc === undefined) {
@@ -626,6 +648,7 @@ export class App {
 
   onSelect(_s: Selection) {
     this.inspection = null;
+    this.inspecting = "";
     this.renderPeek();
     this.renderStatus();
     clearTimeout(this.selectTimer);
@@ -696,7 +719,7 @@ export class App {
       live = `<span class="live paused">${icon("pause")} Paused${this.pending.size ? ` · <b>${this.pending.size} newer version${this.pending.size === 1 ? "" : "s"}</b>` : ""}</span>`;
     } else if (w.state === "error") {
       const since = w.since ? ` since ${clock(w.since)}` : "";
-      live = `<span class="live error" title="${esc(`${w.message ?? "Cannot read the file"}${since}. Cellwake keeps trying and keeps showing the last good version.`)}">${icon("alert")} Can't read the file${this.displayed ? ` · showing ${this.versionName(this.displayed).split(" · ")[0]}` : ""}</span>`;
+      live = `<span class="live error" title="${esc(`${w.message ?? "Cannot read the file"}${since}. Total Recalc keeps trying and keeps showing the last good version.`)}">${icon("alert")} Can't read the file${this.displayed ? ` · showing ${this.versionName(this.displayed).split(" · ")[0]}` : ""}</span>`;
     } else if (w.state === "writing") {
       live = `<span class="live writing"><i class="dot"></i> File is being written…</span>`;
     } else if (w.state === "calculating" || (i && !i.calc.calculated)) {
@@ -710,11 +733,11 @@ export class App {
     const total = i ? i.edits + i.results : 0;
     const headline = i
       ? total || i.rowsAdded || i.rowsRemoved
-        ? `<button class="headline" data-act="changes" title="Show changes (d)"><b class="edits">${i.edits}</b> edit${i.edits === 1 ? "" : "s"}<span class="sep">·</span><b class="results">${i.results}</b> result${i.results === 1 ? "" : "s"}${i.rowsAdded ? `<span class="sep">·</span>${i.rowsAdded} row${i.rowsAdded === 1 ? "" : "s"} added` : ""}${i.rowsRemoved ? `<span class="sep">·</span>${i.rowsRemoved} removed` : ""}<span class="muted"> ${this.compareMode === "baseline" ? `since v${(this.info?.versions.findIndex((v) => v.id === this.baseline) ?? 0) + 1}` : "in latest update"}</span></button>`
+        ? `<button class="headline" data-act="changes" title="Show changes (d)"><b class="edits">${i.edits.toLocaleString("en-US")}</b> <span class="hl-word">edit${i.edits === 1 ? "" : "s"}</span><span class="sep">·</span><b class="results">${i.results.toLocaleString("en-US")}</b> <span class="hl-word">result${i.results === 1 ? "" : "s"}</span>${i.rowsAdded ? `<span class="sep">·</span>${i.rowsAdded} row${i.rowsAdded === 1 ? "" : "s"} added` : ""}${i.rowsRemoved ? `<span class="sep">·</span>${i.rowsRemoved} removed` : ""}<span class="muted"> ${this.compareMode === "baseline" ? `since v${(this.info?.versions.findIndex((v) => v.id === this.baseline) ?? 0) + 1}` : "in latest update"}</span></button>`
         : `<span class="headline quiet">No changes ${this.compareMode === "baseline" ? "since baseline" : "in latest update"}</span>`
       : "";
     bar.innerHTML = `
-      <div class="brand" title="Cellwake"><img src="/cellwake-mark.svg" alt="" /></div>
+      <div class="brand" title="Total Recalc"><img src="/totalrecalc-mark.svg" alt="" /></div>
       <div class="file">
         <span class="name">${esc(fileName ?? "")}</span>
         <span class="folder">${esc(i?.folder ?? "")}</span>
@@ -724,11 +747,11 @@ export class App {
       <div class="spacer"></div>
       ${headline}
       <div class="nav">
-        <button class="icon" data-act="prev" title="Previous change (Shift+N)">${icon("up")}</button>
-        <button class="icon" data-act="next" title="Next change (N)">${icon("down")}</button>
+        <button class="icon" data-act="prev" title="Previous edit (Shift+N)">${icon("up")}</button>
+        <button class="icon" data-act="next" title="Next edit (N)">${icon("down")}</button>
       </div>
       <button class="icon ${this.paused ? "active" : ""}" data-act="pause" title="${this.paused ? "Resume (Space)" : "Pause: hold this version while you look (Space)"}">${icon(this.paused ? "play" : "pause")}</button>
-      <button class="ghost" data-act="baseline" title="Make this version the baseline (F5)">${icon("flag")} Set baseline</button>
+      <button class="ghost" data-act="baseline" title="Make this version the baseline (F5)">${icon("flag")}<span class="label">Set baseline</span></button>
       <div class="divider"></div>
       <button class="icon ${this.panel === "changes" ? "active" : ""}" data-act="changes" title="Changes (d)">${icon("changes")}</button>
       <button class="icon ${this.panel === "inspector" ? "active" : ""}" data-act="inspector" title="Inspector (i)">${icon("inspect")}</button>
@@ -745,7 +768,7 @@ export class App {
       if (act === "palette") openPalette(this);
       if (act === "theme") this.toggleTheme();
     };
-    document.title = fileName ? `${fileName} — Cellwake` : "Cellwake";
+    document.title = fileName ? `${fileName} — Total Recalc` : "Total Recalc";
   }
 
   /** Step to the next cell showing a value from the file's cache. */
@@ -753,7 +776,7 @@ export class App {
     const d = this.data;
     if (!d) return;
     const cells = [...d.allCells()].filter((c) => c.calc !== 0).sort((a, b) => a.r - b.r || a.c - b.c);
-    if (!cells.length) return toast("None on this sheet", "info");
+    if (!cells.length) return toast("No values from the file's cache on this sheet; they are on other sheets", "info");
     const cur = { r: this.grid.rowOf(this.grid.sel.row), c: this.currentCol() ?? 0 };
     const next = cells.find((x) => x.r > cur.r || (x.r === cur.r && x.c > cur.c)) ?? cells[0];
     void this.jumpTo(this.sheetIndex, next.r, next.c, false);
@@ -782,13 +805,13 @@ export class App {
     const kind = ch ? `<span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span>` : "";
     // In the label columns the cell is its own label: don't say it twice.
     const isLabel = vc.col <= d.meta.labelCols;
-    const what = isLabel ? header : [label || "—", header].filter(Boolean).join(" · ");
+    const what = isLabel ? header : [label, header].filter(Boolean).join(" · ");
     el.innerHTML = `
       <span class="addr">${address(row, vc.col)}</span>
       ${what ? `<span class="what">${esc(what)}</span>` : ""}
       <span class="value ${cell?.error ? "err" : ""} ${cell?.text ? "" : "empty"}">${esc(cell?.text || "blank")}</span>
       ${ch ? `<span class="was">was ${esc(shortValue(ch.beforeValue, ch.beforeText))}</span>${dl ? `<span class="delta">${esc(dl)}</span>` : ""}${kind}` : ""}
-      ${cell?.calc === 1 ? `<span class="calc-note" title="Cellwake's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved in the file is shown">from file cache</span>` : ""}
+      ${cell?.calc === 1 ? `<span class="calc-note" title="Total Recalc's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved in the file is shown">from file cache</span>` : ""}
       ${cell?.formula ? `<span class="formula" title="${esc(cell.formula)}">${formulaHtml(cell.formula)}</span>` : ""}
       ${cell?.comment ? `<span class="comment-note" title="${esc(cell.comment)}">${icon("note")}</span>` : ""}`;
   }
@@ -846,7 +869,7 @@ export class App {
     const calc = !c.calculated
       ? `<span class="calc pending">Recalculating…</span>`
       : c.cached || c.unavailable
-        ? `<button class="calc warn" data-act="cached" title="Formulas Cellwake's engine cannot evaluate faithfully show the value Excel saved. Click to step through them.">${c.cached ? `${c.cached.toLocaleString()} from file cache` : ""}${c.cached && c.unavailable ? " · " : ""}${c.unavailable ? `${c.unavailable.toLocaleString()} unavailable` : ""}</button>`
+        ? `<button class="calc warn" data-act="cached" title="Formulas Total Recalc's engine cannot evaluate faithfully show the value Excel saved. Click to step through them.">${c.cached ? `${c.cached.toLocaleString()} from file cache` : ""}${c.cached && c.unavailable ? " · " : ""}${c.unavailable ? `${c.unavailable.toLocaleString()} unavailable` : ""}</button>`
         : `<span class="calc ok">${icon("check")} All values calculated</span>`;
     el.innerHTML = `
       <span class="addr">${esc(addr)}</span>
@@ -854,7 +877,7 @@ export class App {
       <div class="spacer"></div>
       ${c.errors ? `<span class="errs" title="Cells showing an error">${c.errors} error${c.errors === 1 ? "" : "s"}</span>` : ""}
       ${calc}
-      ${d.meta.frozenInferred ? `<span class="muted" title="The file has no frozen panes; Cellwake froze the header row and label columns it found">Freeze: inferred</span>` : ""}
+      ${d.meta.frozenInferred ? `<span class="muted" title="The file has no frozen panes; Total Recalc froze the header row and label columns it found">Freeze: inferred</span>` : ""}
       <span class="muted">${Math.round(this.grid.getZoom() * 100)}%</span>
       <button class="link" data-act="help">? Shortcuts</button>`;
     el.onclick = (e) => {
