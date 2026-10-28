@@ -357,7 +357,7 @@ export class Grid {
     const gf = place("grpFrozen", ROW_HEAD_W, 0, fw, gh, 0, 0);
     const gs = place("grpScroll", ROW_HEAD_W + fw, 0, scrollW, gh, -fw - sl, 0);
     gf.cells.innerHTML = gh ? this.levelSwitchHtml(fw) + this.groupHtml(0, this.frozenC) : "";
-    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) + this.forecastLabelHtml() : "";
+    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) : "";
 
     // Row numbers.
     place("rowFrozen", 0, hh, ROW_HEAD_W, fh, 0, 0).cells.innerHTML = this.rowNumHtml(0, this.frozenR);
@@ -473,7 +473,11 @@ export class Grid {
       const label = vc.kind === "sheet" ? colLetters(vc.col) : "Σ";
       const on = ci >= s0 && ci <= s1 ? " on" : "";
       const add = vc.kind === "sheet" && added.has(vc.col) ? " added" : "";
-      out.push(`<div class="hd${on}${add}${vc.kind === "derived" ? " derived" : ""}" style="left:${x}px;width:${w}px">${label}</div>`);
+      // The first estimate column is marked "Forecast" in place of its letter.
+      const fc = ci === this.forecastCol;
+      out.push(
+        `<div class="hd${on}${add}${vc.kind === "derived" ? " derived" : ""}${fc ? " fc" : ""}" style="left:${x}px;width:${w}px"${fc ? ` title="Column ${label}: estimates start here"` : ""}>${fc ? "Forecast" : label}</div>`,
+      );
     }
     return out.join("");
   }
@@ -533,12 +537,6 @@ export class Grid {
       else if (kind === "E" && sawActual) return ci;
     }
     return -1;
-  }
-
-  private forecastLabelHtml(): string {
-    const ci = this.forecastCol;
-    if (ci < 0 || ci < this.frozenC) return "";
-    return `<div class="fc-label" style="left:${this.colX[ci]}px">Forecast</div>`;
   }
 
   private levelSwitchHtml(width: number, compact = false): string {

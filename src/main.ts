@@ -1,16 +1,21 @@
-import "@fontsource-variable/inter";
+import "./fonts.css";
 import "./styles.css";
 import { type Api, createApi } from "./api";
-import type { BookInfo, CellChange, Inspection, SheetSummary, WatchState } from "./types";
+import type { BookInfo, CellChange, Inspection, WatchState } from "./types";
 import { SheetData, address, colLetters } from "./sheet";
 import { Grid, type Selection } from "./grid";
 import { buildViewCols, yearGroups, type YearGroup } from "./periods";
 import type { Theme } from "./theme";
 import { ago, clock, delta, esc, shortValue } from "./format";
 import { icon } from "./icons";
+import { $ } from "./dom";
+import { changeReport, changesHtml, formulaHtml, inspectorHtml, kindLabel } from "./panels";
+import { openPalette } from "./palette";
+import { showContextMenu, showHelp, toast } from "./overlays";
+import { handleKey } from "./keys";
 
-type CompareMode = "baseline" | "latest";
-type Panel = "changes" | "inspector" | null;
+export type CompareMode = "baseline" | "latest";
+export type Panel = "changes" | "inspector" | null;
 
 interface FileMemory {
   sheet?: string;
@@ -20,9 +25,8 @@ interface FileMemory {
 }
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
 
-class App {
+export class App {
   api!: Api;
   info: BookInfo | null = null;
   path: string | null = null;
@@ -51,7 +55,7 @@ class App {
       select: (s) => this.onSelect(s),
       toggleGroup: (y) => this.toggleYear(y),
       setLevel: (years) => this.setLevel(years),
-      contextMenu: (x, y) => this.showContextMenu(x, y),
+      contextMenu: (x, y) => showContextMenu(this, x, y),
       hoverCell: (r, c, x, y) => this.hover(r, c, x, y),
     });
   }
@@ -59,6 +63,10 @@ class App {
   // ------------------------------------------------------------- startup
 
   async start() {
+    // WebKitGTK (the Linux webview) rounds glyph advances at small sizes and
+    // squeezes word spaces; styles.css compensates under this class.
+    const ua = navigator.userAgent;
+    if (/Linux/.test(ua) && /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) document.documentElement.classList.add("webkitgtk");
     this.theme = (localStorage.getItem("cellwake.theme") as Theme) || "light";
     this.renderShell();
     this.applyTheme();
@@ -72,7 +80,7 @@ class App {
       (p) => this.open(p),
       (over) => document.body.classList.toggle("drop-over", over),
     );
-    document.addEventListener("keydown", (e) => this.onKey(e));
+    document.addEventListener("keydown", (e) => handleKey(this, e));
     window.setInterval(() => this.renderTopBar(), 15000);
     const initial = await this.api.initialPath();
     if (initial) await this.open(initial);
@@ -116,7 +124,7 @@ class App {
       this.path = opened.path;
     } catch (e) {
       $("#loading").classList.remove("on");
-      this.toast(`Could not open ${path}: ${e}`, "info");
+      toast(`Could not open ${path}: ${e}`, "info");
       if (!this.info) this.showStart();
       return;
     }
@@ -187,7 +195,7 @@ class App {
         this.baseline = plain.versions[0]?.id ?? id;
         ref = this.baseline;
         info = await this.api.bookInfo(id, ref);
-        this.toast("The baseline was no longer held; comparing with the oldest version", "info");
+        toast("The baseline was no longer held; comparing with the oldest version", "info");
       }
       if (token !== this.loadToken) return;
       // Stay on the same sheet by name, even if sheets were added or reordered.
@@ -208,10 +216,10 @@ class App {
         if (token !== this.loadToken) return;
         if (fresh) this.grid.wake(fresh.changes, reducedMotion.matches);
         const update = await this.api.bookInfo(id, prevDisplayed);
-        if (token === this.loadToken) this.toast(this.updateSentence(update), "update");
+        if (token === this.loadToken) toast(this.updateSentence(update), "update");
       }
     } catch (e) {
-      if (token === this.loadToken) this.toast(`Could not show that version: ${e}`, "info");
+      if (token === this.loadToken) toast(`Could not show that version: ${e}`, "info");
     }
   }
 
@@ -240,7 +248,7 @@ class App {
       if (token !== this.loadToken) return;
       this.applySheet(new SheetData(payload), "fresh");
     } catch (e) {
-      if (token === this.loadToken) this.toast(`Could not load the sheet: ${e}`, "info");
+      if (token === this.loadToken) toast(`Could not load the sheet: ${e}`, "info");
     } finally {
       clearTimeout(slow);
       $("#loading").classList.remove("on");
@@ -286,6 +294,15 @@ class App {
     return { active, other: point(s.row2, s.col2) ?? active, offset: this.grid.rowScreenOffset(s.row), left: this.grid.scrollPos.left };
   }
 
+  /** Where a quarter hidden inside a collapsed year now shows: the year's own column. */
+  yearColumn(col: number): number | undefined {
+    const g = this.groups.find((g) => g.quarters.includes(col));
+    if (!g) return undefined;
+    if (g.annual !== null) return this.grid.viewColOf(g.annual);
+    const i = this.grid.viewCols.findIndex((vc) => vc.kind === "derived" && vc.group.year === g.year);
+    return i >= 0 ? i : undefined;
+  }
+
   restore(a: Anchor) {
     const d = this.data!;
     const find = (p: Point): [number, number] => {
@@ -308,7 +325,7 @@ class App {
           }
         }
       }
-      return [this.grid.viewRowOf(row) ?? 0, this.grid.viewColOf(col) ?? 0];
+      return [this.grid.viewRowOf(row) ?? 0, this.grid.viewColOf(col) ?? this.yearColumn(col) ?? 0];
     };
     const [r, c] = find(a.active);
     const [r2, c2] = find(a.other);
@@ -330,7 +347,7 @@ class App {
     this.baseline = id ?? this.displayed;
     this.compareMode = "baseline";
     void this.display(this.displayed);
-    this.toast(`Baseline set to ${this.versionName(this.baseline)}`, "info", { label: "Undo", run: () => this.undoBaseline() });
+    toast(`Baseline set to ${this.versionName(this.baseline)}`, "info", { label: "Undo", run: () => this.undoBaseline() });
   }
 
   undoBaseline() {
@@ -354,7 +371,7 @@ class App {
       const n = this.pending.size;
       this.pending.clear();
       if (this.latest !== null && this.latest !== this.displayed) void this.display(this.latest, { announce: true });
-      else if (n === 0) this.toast("Resumed · nothing changed while paused", "info");
+      else if (n === 0) toast("Resumed · nothing changed while paused", "info");
     }
     this.renderTopBar();
   }
@@ -465,12 +482,16 @@ class App {
     return `v${vs.indexOf(v) + 1} · ${clock(v.at)}`;
   }
 
+  async copyChangeReport() {
+    await this.writeClipboard(changeReport(this), "the change report");
+  }
+
   async writeClipboard(text: string, what: string) {
     try {
       await navigator.clipboard.writeText(text);
-      this.toast(`Copied ${what}`, "info");
+      toast(`Copied ${what}`, "info");
     } catch {
-      this.toast("Couldn't reach the clipboard", "info");
+      toast("Couldn't reach the clipboard", "info");
     }
   }
 
@@ -482,7 +503,7 @@ class App {
       if (g) {
         this.collapsed.get(this.data!.meta.name)!.delete(g.year);
         this.relayout();
-        this.toast(`Expanded ${g.year} to show the change`, "info", { label: "Collapse", run: () => this.toggleYear(g.year) });
+        toast(`Expanded ${g.year} to show the change`, "info", { label: "Collapse", run: () => this.toggleYear(g.year) });
         vc = this.grid.viewColOf(ch.c);
       }
     }
@@ -574,142 +595,9 @@ class App {
     await this.writeClipboard(text, `${count} cell${count === 1 ? "" : "s"}${withContext ? " with context" : ""}`);
   }
 
-  async copyChangeReport() {
-    const d = this.data;
-    if (!d || !this.info) return;
-    const i = this.info;
-    const lines = [
-      `**${i.fileName}** · ${this.versionName(this.displayed)} compared with ${this.compareMode === "baseline" ? `the baseline, ${this.versionName(this.baseline)}` : "the previous version"}: ${i.edits} edits, ${i.results} recalculated, ${i.rowsAdded} rows added, ${i.rowsRemoved} removed.`,
-      "",
-      `**${d.meta.name}**`,
-    ];
-    const rows = changeRows(d);
-    for (const g of rows.filter((g) => g.edited)) lines.push(`- ${g.label || `Row ${g.r}`}: edited, ${g.cells.length} cell${g.cells.length === 1 ? "" : "s"}${g.span ? `, ${g.span}` : ""}${g.range ? `, ${g.range}` : ""}`);
-    for (const r of d.diff.addedRows) lines.push(`- ${d.rowLabel(r) || `Row ${r}`}: new row`);
-    for (const rr of d.diff.removedRows) lines.push(`- ${rr.label || rr.cells.map((c) => c[1]).slice(0, 3).join(" | ")}: removed`);
-    for (const g of rows.filter((g) => !g.edited)) lines.push(`- ${g.label || `Row ${g.r}`}: recalculated, ${g.cells.length} cell${g.cells.length === 1 ? "" : "s"}${g.range ? `, ${g.range}` : ""}`);
-    const others = i.sheets.filter((s, idx) => idx !== this.sheetIndex && s.edits + s.results + s.structure > 0);
-    if (others.length) {
-      lines.push("", "Other sheets:");
-      for (const s of others) lines.push(`- ${s.name}: ${s.edits} edits, ${s.results} recalculated${s.structure ? `, ${s.structure} rows added or removed` : ""}`);
-    }
-    if (i.removedSheets.length) lines.push("", `Sheets removed: ${i.removedSheets.join(", ")}`);
-    await this.writeClipboard(lines.join("\n"), "the change report");
-  }
 
   // ------------------------------------------------------------ keyboard
 
-  onKey(e: KeyboardEvent) {
-    const target = e.target as HTMLElement;
-    if (target.closest("input, textarea")) {
-      if (e.key === "Escape") this.closeOverlays();
-      return;
-    }
-    // Overlays take their own keys; buttons keep Enter, Space and Tab.
-    if ($("#overlay").classList.contains("on")) {
-      if (e.key === "Escape") this.closeOverlays();
-      return;
-    }
-    if (target.closest("button") && ["Enter", " ", "Tab"].includes(e.key)) return;
-    if (document.body.classList.contains("empty")) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        void this.pick();
-      }
-      return;
-    }
-    const s = this.grid.sel;
-    const ctrl = e.ctrlKey || e.metaKey;
-    const move = (dr: number, dc: number) => {
-      e.preventDefault();
-      this.grid.select((e.shiftKey ? s.row2 : s.row) + dr, (e.shiftKey ? s.col2 : s.col) + dc, e.shiftKey);
-    };
-    const edge = (dr: number, dc: number) => {
-      e.preventDefault();
-      const [r, c] = this.edgeOfData(e.shiftKey ? s.row2 : s.row, e.shiftKey ? s.col2 : s.col, dr, dc);
-      this.grid.select(r, c, e.shiftKey);
-    };
-    const k = e.key;
-    if (ctrl && k.toLowerCase() === "k") return void (e.preventDefault(), this.openPalette());
-    if (ctrl && k.toLowerCase() === "g") return void (e.preventDefault(), this.openPalette("go"));
-    if (ctrl && k.toLowerCase() === "f") return void (e.preventDefault(), this.openPalette("find"));
-    if (ctrl && k.toLowerCase() === "o") return void (e.preventDefault(), this.pick());
-    if (ctrl && k.toLowerCase() === "c") return void (e.preventDefault(), this.copy(e.shiftKey));
-    if (ctrl && (k === "=" || k === "+")) return void (e.preventDefault(), this.zoomBy(1.1));
-    if (ctrl && k === "-") return void (e.preventDefault(), this.zoomBy(1 / 1.1));
-    if (ctrl && k === "0") return void (e.preventDefault(), this.zoomBy(0));
-    if (ctrl && k === "PageDown") return void (e.preventDefault(), this.switchSheet(this.nextVisibleSheet(1)));
-    if (ctrl && k === "PageUp") return void (e.preventDefault(), this.switchSheet(this.nextVisibleSheet(-1)));
-    if (e.altKey && k === "ArrowLeft") return void (e.preventDefault(), this.back());
-    switch (k) {
-      case "ArrowUp":
-        return ctrl ? edge(-1, 0) : move(-1, 0);
-      case "ArrowDown":
-        return ctrl ? edge(1, 0) : move(1, 0);
-      case "ArrowLeft":
-        return ctrl ? edge(0, -1) : move(0, -1);
-      case "ArrowRight":
-        return ctrl ? edge(0, 1) : move(0, 1);
-      case "k":
-        return move(-1, 0);
-      case "j":
-        return move(1, 0);
-      case "h":
-        return move(0, -1);
-      case "l":
-        return move(0, 1);
-      case "PageDown":
-        return move(this.grid.pageRows, 0);
-      case "PageUp":
-        return move(-this.grid.pageRows, 0);
-      case "Home":
-        e.preventDefault();
-        return this.grid.select(ctrl ? 0 : s.row, 0, e.shiftKey);
-      case "End":
-        e.preventDefault();
-        return this.grid.select(ctrl ? this.grid.rowCount - 1 : s.row, this.grid.colCount - 1, e.shiftKey);
-      case "g":
-        return this.grid.select(0, s.col);
-      case "G":
-        return this.grid.select(this.grid.rowCount - 1, s.col);
-      case "Tab":
-        return move(0, e.shiftKey ? -1 : 1);
-      case "n":
-        return void this.stepChange(1);
-      case "N":
-        return void this.stepChange(-1);
-      case " ":
-        e.preventDefault();
-        return this.togglePause();
-      case "F5":
-        e.preventDefault();
-        return this.setBaseline();
-      case "F2":
-      case "i":
-        e.preventDefault();
-        return this.togglePanel("inspector");
-      case "d":
-        return this.togglePanel("changes");
-      case "Enter":
-        e.preventDefault();
-        return void this.followFirstInput();
-      case "Backspace":
-        e.preventDefault();
-        return void this.back();
-      case "[":
-        return this.setLevel(true);
-      case "]":
-        return this.setLevel(false);
-      case "t":
-        return this.toggleTheme();
-      case "?":
-        return this.showHelp();
-      case "Escape":
-        if (this.closeOverlays()) return;
-        if (s.row !== s.row2 || s.col !== s.col2) return this.grid.select(s.row, s.col);
-        if (this.panel) return this.togglePanel(this.panel);
-    }
-  }
 
   nextVisibleSheet(dir: 1 | -1): number {
     const sheets = this.info?.sheets ?? [];
@@ -720,30 +608,6 @@ class App {
     return this.sheetIndex;
   }
 
-  edgeOfData(row: number, col: number, dr: number, dc: number): [number, number] {
-    const d = this.data!;
-    const filled = (ri: number, ci: number) => {
-      const vc = this.grid.colOf(ci);
-      const r = this.grid.rowOf(ri);
-      return vc?.kind === "sheet" && !!d.cell(r, vc.col)?.text;
-    };
-    let r = row;
-    let c = col;
-    const inside = (ri: number, ci: number) => ri >= 0 && ci >= 0 && ri < this.grid.rowCount && ci < this.grid.colCount;
-    const startFilled = filled(r, c) && inside(r + dr, c + dc) && filled(r + dr, c + dc);
-    while (inside(r + dr, c + dc)) {
-      if (startFilled ? !filled(r + dr, c + dc) : filled(r + dr, c + dc)) {
-        if (!startFilled) {
-          r += dr;
-          c += dc;
-        }
-        break;
-      }
-      r += dr;
-      c += dc;
-    }
-    return [r, c];
-  }
 
   zoomBy(f: number) {
     this.grid.setZoom(f === 0 ? 1 : this.grid.getZoom() * f);
@@ -878,7 +742,7 @@ class App {
       if (act === "baseline") this.setBaseline();
       if (act === "changes") this.togglePanel("changes");
       if (act === "inspector") this.togglePanel("inspector");
-      if (act === "palette") this.openPalette();
+      if (act === "palette") openPalette(this);
       if (act === "theme") this.toggleTheme();
     };
     document.title = fileName ? `${fileName} — Cellwake` : "Cellwake";
@@ -889,7 +753,7 @@ class App {
     const d = this.data;
     if (!d) return;
     const cells = [...d.allCells()].filter((c) => c.calc !== 0).sort((a, b) => a.r - b.r || a.c - b.c);
-    if (!cells.length) return this.toast("None on this sheet", "info");
+    if (!cells.length) return toast("None on this sheet", "info");
     const cur = { r: this.grid.rowOf(this.grid.sel.row), c: this.currentCol() ?? 0 };
     const next = cells.find((x) => x.r > cur.r || (x.r === cur.r && x.c > cur.c)) ?? cells[0];
     void this.jumpTo(this.sheetIndex, next.r, next.c, false);
@@ -995,7 +859,7 @@ class App {
       <button class="link" data-act="help">? Shortcuts</button>`;
     el.onclick = (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest("[data-act=help]")) this.showHelp();
+      if (t.closest("[data-act=help]")) showHelp(this);
       if (t.closest("[data-act=cached]")) this.nextCachedCell();
     };
   }
@@ -1013,90 +877,13 @@ class App {
         <button class="${this.panel === "inspector" ? "on" : ""}" data-tab="inspector">Inspector</button>
         <button class="icon close" data-tab="close" title="Close (Esc)">${icon("x")}</button>
       </div>
-      <div class="panel-body">${this.panel === "changes" ? this.changesHtml() : this.inspectorHtml()}</div>`;
+      <div class="panel-body">${this.panel === "changes" ? changesHtml(this) : inspectorHtml(this)}</div>`;
     el.onclick = (e) => this.onPanelClick(e);
     if (this.panel === "inspector" && !this.inspection) void this.inspect();
     if (this.panel === "changes") this.highlightChangeRow();
   }
 
-  changesHtml(): string {
-    const i = this.info!;
-    const d = this.data!;
-    const versions = i.versions;
-    const timeline = versions
-      .map((v) => {
-        const cls = [v.id === this.displayed ? "shown" : "", v.id === this.baseline ? "base" : ""].join(" ");
-        return `<button class="ver ${cls}" data-ver="${v.id}" title="${v.id === this.baseline ? "The baseline" : "Make this version the baseline"}"><b>v${versions.indexOf(v) + 1}</b> ${clock(v.at)}${v.id === this.baseline ? " · base" : ""}</button>`;
-      })
-      .join("");
-    const groups = changeRows(d);
-    const edited = groups.filter((g) => g.edited);
-    const results = groups.filter((g) => !g.edited);
-    const rowHtml = (g: ChangeRow) => `
-      <button class="chrow ${g.edited ? "edited" : "result"}" data-r="${g.r}" data-c="${g.cells[0].c}">
-        <span class="bar"></span>
-        <span class="lbl">${esc(g.label || `Row ${g.r}`)}</span>
-        <span class="meta">${g.cells.length} cell${g.cells.length === 1 ? "" : "s"}${g.span ? ` · ${esc(g.span)}` : ""}</span>
-        ${g.range ? `<span class="rng">${esc(g.range)}</span>` : ""}
-        ${g.spark ? `<span class="spark">${g.spark}</span>` : ""}
-      </button>`;
-    const other = i.sheets
-      .map((s, idx) => ({ s, idx }))
-      .filter(({ s, idx }) => idx !== this.sheetIndex && s.edits + s.results + s.structure > 0);
-    const removed = d.diff.removedRows;
-    const empty = !groups.length && !removed.length && !d.diff.addedRows.length;
-    return `
-      <div class="seg">
-        <button class="${this.compareMode === "baseline" ? "on" : ""}" data-mode="baseline">Since baseline</button>
-        <button class="${this.compareMode === "latest" ? "on" : ""}" data-mode="latest">Latest update</button>
-      </div>
-      <div class="timeline">${timeline}</div>
-      <div class="sheet-head"><b>${esc(d.meta.name)}</b><span class="muted">${d.diff.edits} edits · ${d.diff.results} results</span><button class="icon" data-act="report" title="Copy the change list as Markdown">${icon("copy")}</button></div>
-      ${empty ? `<div class="empty-note">${icon("check")} Nothing changed on this sheet${this.compareMode === "baseline" ? " since the baseline" : " in the latest update"}.</div>` : ""}
-      ${edited.length ? `<div class="sec">Edited</div>${edited.map(rowHtml).join("")}` : ""}
-      ${d.diff.addedRows.length ? `<div class="sec">Rows added</div>${d.diff.addedRows.map((r) => `<button class="chrow added" data-r="${r}" data-c="1"><span class="bar"></span><span class="lbl">${esc(d.rowLabel(r) || `Row ${r}`)}</span><span class="meta">new row</span></button>`).join("")}` : ""}
-      ${removed.length ? `<div class="sec">Rows removed</div>${removed.map((rr) => `<div class="chrow removed"><span class="bar"></span><span class="lbl">${esc(rr.label || rr.cells.map((c) => c[1]).slice(0, 2).join(" · ") || "Unlabelled row")}</span><span class="meta">was below row ${rr.after}</span><span class="rng">${esc(rr.cells.slice(1, 5).map((c) => c[1]).join("  "))}</span></div>`).join("")}` : ""}
-      ${results.length ? `<div class="sec">Recalculated</div>${results.map(rowHtml).join("")}` : ""}
-      ${other.length ? `<div class="sec">Other sheets</div>${other.map(({ s, idx }) => `<button class="chrow sheetrow" data-sheet="${idx}"><span class="lbl">${esc(s.name)}</span><span class="meta">${s.edits} edits · ${s.results} results${s.structure ? ` · ${s.structure} rows` : ""}</span>${icon("chevron")}</button>`).join("")}` : ""}`;
-  }
 
-  inspectorHtml(): string {
-    const d = this.data!;
-    const row = this.grid.rowOf(this.grid.sel.row);
-    const vc = this.grid.colOf(this.grid.sel.col);
-    if (!vc || vc.kind !== "sheet") return `<div class="empty-note">A derived annual column is computed by Cellwake from the four quarters; it is not in the workbook.</div>`;
-    const cell = d.cell(row, vc.col);
-    const ch = d.change(row, vc.col);
-    const label = d.rowLabel(row);
-    const header = d.colHeader(vc.col);
-    const percent = !!this.info!.styles[cell?.style ?? 0]?.percent;
-    const ins = this.inspection;
-    const refList = (list: Inspection["inputs"]) =>
-      list.length
-        ? list
-            .map(
-              (x) =>
-                `<button class="ref" data-sheet="${x.sheetIndex}" data-r="${x.r}" data-c="${x.c}"><span class="lbl">${esc(x.label || x.address)}${x.header ? ` <span class="muted">· ${esc(x.header)}</span>` : ""}</span><span class="val">${esc(x.text)}</span>${x.sheetIndex !== this.sheetIndex ? `<span class="sheetname">${esc(x.sheet)}</span>` : ""}${x.more ? `<span class="more">+${x.more} more</span>` : ""}</button>`,
-            )
-            .join("")
-        : `<div class="muted small">None</div>`;
-    const calcNote = cell?.calc === 1 ? "From the file's cache: the engine does not support a function in this formula." : cell?.calc === 2 ? "Unavailable: the engine could not calculate this and the file holds no saved value." : cell?.formula ? "Calculated by Cellwake." : cell ? "A constant typed into the workbook." : "Empty cell.";
-    return `
-      <div class="insp-title">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</div>
-      <div class="insp-sub">${esc(d.meta.name)}!${address(row, vc.col)}</div>
-      <div class="insp-value ${cell?.error ? "err" : ""}">${esc(cell?.text || "blank")}</div>
-      ${cell && typeof cell.value === "number" && cell.text !== String(cell.value) ? `<div class="insp-raw">${Number(cell.value.toPrecision(12))}</div>` : ""}
-      ${ch ? `<div class="insp-was"><span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span> was <b>${esc(shortValue(ch.beforeValue, ch.beforeText))}</b> <span class="delta">${esc(delta(ch.beforeValue, cell?.value ?? null, cell?.text ?? "", percent))}</span></div>` : ""}
-      ${cell?.formula ? `<div class="insp-sec">Formula</div><div class="insp-formula">${formulaHtml(cell.formula, { names: this.info!.sheets.map((x) => x.name), current: this.sheetIndex })}</div>` : ""}
-      ${ch?.beforeFormula && ch.beforeFormula !== cell?.formula ? `<div class="insp-formula before">${esc(ch.beforeFormula)}</div>` : ""}
-      ${cell?.comment ? `<div class="insp-sec">Note</div><div class="insp-note">${esc(cell.comment)}</div>` : ""}
-      <div class="insp-sec">Inputs</div>
-      ${ins ? refList(ins.inputs) : `<div class="muted small">…</div>`}
-      <div class="insp-sec">Used by</div>
-      ${ins ? refList(ins.usedBy) : `<div class="muted small">…</div>`}
-      <div class="insp-calc">${calcNote}</div>
-      ${this.history.length ? `<button class="link back" data-act="back">${icon("back")} Back (Backspace)</button>` : ""}`;
-  }
 
   onPanelClick(e: MouseEvent) {
     const t = e.target as HTMLElement;
@@ -1130,19 +917,6 @@ class App {
 
   // ------------------------------------------------------------- overlays
 
-  toast(text: string, kind: "info" | "update", action?: { label: string; run: () => void }) {
-    const host = $("#toasts");
-    const t = document.createElement("div");
-    t.className = `toast ${kind}`;
-    t.innerHTML = `${kind === "update" ? `<i class="wake-dot"></i>` : ""}<span>${esc(text)}</span>${action ? `<button>${esc(action.label)}</button>` : ""}`;
-    if (action) t.querySelector("button")!.onclick = () => (action.run(), t.remove());
-    host.appendChild(t);
-    requestAnimationFrame(() => t.classList.add("in"));
-    setTimeout(() => {
-      t.classList.remove("in");
-      setTimeout(() => t.remove(), 300);
-    }, action ? 6000 : 3200);
-  }
 
   hover(row: number | null, col: number | null, x: number, y: number) {
     const tip = $("#tooltip");
@@ -1163,179 +937,14 @@ class App {
     tip.classList.add("on");
   }
 
-  showContextMenu(x: number, y: number) {
-    const o = $("#overlay");
-    o.className = "on menu-host";
-    o.innerHTML = `<div class="menu" style="left:${Math.min(x, innerWidth - 240)}px;top:${Math.min(y, innerHeight - 200)}px">
-      <button data-m="copy">${icon("copy")} Copy<kbd>Ctrl C</kbd></button>
-      <button data-m="ctx">${icon("sparkle")} Copy with context<kbd>Ctrl Shift C</kbd></button>
-      <hr/>
-      <button data-m="inspect">${icon("inspect")} Inspect<kbd>I</kbd></button>
-      <button data-m="baseline">${icon("flag")} Set baseline<kbd>F5</kbd></button>
-    </div>`;
-    o.onclick = (e) => {
-      const m = (e.target as HTMLElement).closest<HTMLElement>("[data-m]")?.dataset.m;
-      this.closeOverlays();
-      if (m === "copy") void this.copy(false);
-      if (m === "ctx") void this.copy(true);
-      if (m === "inspect") {
-        this.panel = null;
-        this.togglePanel("inspector");
-      }
-      if (m === "baseline") this.setBaseline();
-    };
-  }
 
-  closeOverlays(): boolean {
-    const o = $("#overlay");
-    const was = o.classList.contains("on");
-    o.className = "";
-    o.innerHTML = "";
-    if (was) this.grid.focus();
-    return was;
-  }
 
-  showHelp() {
-    const o = $("#overlay");
-    o.className = "on modal-host";
-    const rows: [string, string][] = [
-      ["Arrows · Ctrl+Arrows · PgUp/PgDn", "Move · jump to edge · page"],
-      ["Shift + movement", "Extend the selection"],
-      ["Ctrl+PgUp / Ctrl+PgDn", "Previous / next sheet"],
-      ["N / Shift+N", "Next / previous change"],
-      ["Space", "Pause or resume live updates"],
-      ["F5", "Set baseline"],
-      ["D · I (or F2)", "Changes · Inspector"],
-      ["Enter / Backspace", "Follow first input / go back"],
-      ["[ / ]", "Collapse to years / expand quarters"],
-      ["Ctrl+C · Ctrl+Shift+C", "Copy · copy with context for your agent"],
-      ["Ctrl+K · Ctrl+G · Ctrl+F", "Commands · go to · find"],
-      ["Ctrl + scroll · Ctrl 0", "Zoom · reset zoom"],
-      ["T", "Light or dark"],
-    ];
-    o.innerHTML = `<div class="modal help"><h2>Keyboard</h2>${rows.map(([k, v]) => `<div class="kv"><kbd>${k}</kbd><span>${v}</span></div>`).join("")}<p class="muted small">Vim keys (h j k l, g, G) work too.</p></div>`;
-    o.onclick = (e) => {
-      if (e.target === o) this.closeOverlays();
-    };
-  }
 
   // ------------------------------------------------------ command palette
 
-  openPalette(mode: "all" | "go" | "find" = "all") {
-    const o = $("#overlay");
-    o.className = "on modal-host";
-    const placeholder = mode === "go" ? "Go to a cell (B12) or a row label…" : mode === "find" ? "Find on this sheet…" : "Type a command, sheet or row label…";
-    o.innerHTML = `<div class="modal palette"><input id="pal-in" placeholder="${placeholder}" autocomplete="off" spellcheck="false" /><div id="pal-list"></div></div>`;
-    const input = $<HTMLInputElement>("#pal-in");
-    const list = $("#pal-list");
-    let items: PaletteItem[] = [];
-    let active = 0;
-    const draw = () => {
-      items = this.paletteItems(input.value, mode);
-      active = Math.min(active, Math.max(0, items.length - 1));
-      list.innerHTML = items
-        .slice(0, 60)
-        .map((it, i) => `<button class="pal-item ${i === active ? "on" : ""}" data-i="${i}"><span class="pk">${it.kind}</span><span class="pt">${esc(it.title)}</span>${it.hint ? `<span class="ph">${esc(it.hint)}</span>` : ""}</button>`)
-        .join("") ||
-        `<div class="muted small pad">${
-          input.value.trim()
-            ? "No matches"
-            : mode === "go"
-              ? "Type a cell address such as B12, or a row label such as Revenue."
-              : mode === "find"
-                ? "Type to search the values and labels on this sheet."
-                : ""
-        }</div>`;
-      list.querySelector(".on")?.scrollIntoView({ block: "nearest" });
-    };
-    input.oninput = () => {
-      active = 0;
-      draw();
-    };
-    input.onkeydown = (e) => {
-      if (e.key === "ArrowDown") (active = Math.min(items.length - 1, active + 1)), draw(), e.preventDefault();
-      if (e.key === "ArrowUp") (active = Math.max(0, active - 1)), draw(), e.preventDefault();
-      if (e.key === "Enter" && items[active]) {
-        e.preventDefault();
-        const it = items[active];
-        this.closeOverlays();
-        it.run();
-      }
-    };
-    list.onclick = (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-i]");
-      if (!b) return;
-      const it = items[Number(b.dataset.i)];
-      this.closeOverlays();
-      it.run();
-    };
-    o.onclick = (e) => {
-      if (e.target === o) this.closeOverlays();
-    };
-    draw();
-    input.focus();
-  }
 
-  paletteItems(q: string, mode: "all" | "go" | "find"): PaletteItem[] {
-    const query = q.trim().toLowerCase();
-    const out: PaletteItem[] = [];
-    const d = this.data;
-    const m = /^([a-z]{1,3})(\d+)$/i.exec(q.trim());
-    if (m && d) {
-      const c = m[1].toUpperCase().split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
-      const r = Number(m[2]);
-      out.push({ kind: "Go", title: `${m[1].toUpperCase()}${r}`, hint: d.rowLabel(r), run: () => void this.jumpTo(this.sheetIndex, r, c) });
-    }
-    if (mode === "all") {
-      const actions: PaletteItem[] = [
-        { kind: "Action", title: "Open a workbook…", hint: "Ctrl O", run: () => void this.pick() },
-        { kind: "Action", title: this.paused ? "Resume live updates" : "Pause live updates", hint: "Space", run: () => this.togglePause() },
-        { kind: "Action", title: "Set baseline to this version", hint: "F5", run: () => this.setBaseline() },
-        { kind: "Action", title: "Compare with the baseline", run: () => this.setCompare("baseline") },
-        { kind: "Action", title: "Compare with the previous version", run: () => this.setCompare("latest") },
-        { kind: "Action", title: "Next change", hint: "N", run: () => void this.stepChange(1) },
-        { kind: "Action", title: "Show changes", hint: "D", run: () => this.togglePanel("changes") },
-        { kind: "Action", title: "Inspect the selected cell", hint: "I", run: () => this.togglePanel("inspector") },
-        { kind: "Action", title: "Copy with context", hint: "Ctrl Shift C", run: () => void this.copy(true) },
-        { kind: "Action", title: "Copy change report", run: () => void this.copyChangeReport() },
-        { kind: "Action", title: "Collapse to years", hint: "[", run: () => this.setLevel(true) },
-        { kind: "Action", title: "Expand quarters", hint: "]", run: () => this.setLevel(false) },
-        { kind: "Action", title: this.theme === "light" ? "Dark theme" : "Light theme", hint: "T", run: () => this.toggleTheme() },
-        { kind: "Action", title: "Keyboard shortcuts", hint: "?", run: () => this.showHelp() },
-      ];
-      out.push(...actions.filter((a) => !query || a.title.toLowerCase().includes(query)));
-      this.info?.sheets.forEach((s: SheetSummary, i) => {
-        if (!query || s.name.toLowerCase().includes(query)) out.push({ kind: "Sheet", title: s.name, hint: s.edits ? `${s.edits} edits` : "", run: () => void this.switchSheet(i) });
-      });
-    }
-    if (d && query) {
-      const seen = new Set<number>();
-      for (let r = 1; r <= d.meta.maxRow && out.length < 80; r++) {
-        const label = d.rowLabel(r);
-        if (label && label.toLowerCase().includes(query) && !seen.has(r)) {
-          seen.add(r);
-          out.push({ kind: "Row", title: label, hint: `row ${r}`, run: () => void this.jumpTo(this.sheetIndex, r, this.currentCol() ?? d.meta.labelCols + 1) });
-        }
-      }
-      if (mode === "find") {
-        for (const cell of d.allCells()) {
-          if (out.length >= 120) break;
-          if (cell.c > d.meta.labelCols && cell.text.toLowerCase().includes(query)) {
-            out.push({ kind: "Cell", title: cell.text, hint: `${address(cell.r, cell.c)} · ${d.rowLabel(cell.r)}`, run: () => void this.jumpTo(this.sheetIndex, cell.r, cell.c) });
-          }
-        }
-      }
-    }
-    return out;
-  }
 }
 
-interface PaletteItem {
-  kind: string;
-  title: string;
-  hint?: string;
-  run: () => void;
-}
 
 interface Point {
   label: string;
@@ -1352,15 +961,16 @@ interface Anchor {
   left: number;
 }
 
-interface ChangeRow {
-  r: number;
-  label: string;
-  cells: CellChange[];
-  edited: boolean;
-  span: string;
-  range: string;
-  spark: string;
-}
+
+
+
+
+/** Changes grouped by row, with a period span, the range of relative moves and a sparkline. */
+
+/** Before/after line for a row of period values. */
+
+/** A formula with its references as chips; with `sheets`, they are clickable. */
+
 
 function occurrence(d: SheetData, row: number): number {
   const label = d.rowLabel(row);
@@ -1369,101 +979,9 @@ function occurrence(d: SheetData, row: number): number {
   return n;
 }
 
-function kindLabel(k: CellChange["kind"]): string {
-  return { edit: "Edited", formula: "Formula edited", result: "Recalculated", added: "Added", cleared: "Cleared" }[k];
-}
-
 function findLastIndex<T>(arr: T[], pred: (x: T) => boolean): number {
   for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) return i;
   return -1;
-}
-
-/** Changes grouped by row, with a period span, the range of relative moves and a sparkline. */
-function changeRows(d: SheetData): ChangeRow[] {
-  const byRow = new Map<number, CellChange[]>();
-  for (const ch of d.changeList) {
-    const list = byRow.get(ch.r) ?? [];
-    list.push(ch);
-    byRow.set(ch.r, list);
-  }
-  return [...byRow].map(([r, cells]) => {
-    const first = d.colHeader(cells[0].c) || colLetters(cells[0].c);
-    const last = d.colHeader(cells[cells.length - 1].c) || colLetters(cells[cells.length - 1].c);
-    const pcts: number[] = [];
-    for (const ch of cells) {
-      const after = d.cell(ch.r, ch.c)?.value;
-      if (typeof ch.beforeValue === "number" && typeof after === "number" && ch.beforeValue !== 0) pcts.push(((after - ch.beforeValue) / Math.abs(ch.beforeValue)) * 100);
-    }
-    const lo = Math.min(...pcts);
-    const hi = Math.max(...pcts);
-    const f = (p: number) => (Math.abs(p) < 0.005 ? "0%" : `${p > 0 ? "+" : "−"}${Math.abs(p).toFixed(Math.abs(p) < 1 ? 2 : 1)}%`);
-    const range = pcts.length ? (Math.abs(hi - lo) < 0.05 ? f(lo) : `${f(lo)} to ${f(hi)}`) : "";
-    return {
-      r,
-      label: d.rowLabel(r),
-      cells,
-      edited: cells.some((c) => c.kind !== "result"),
-      span: cells.length > 1 ? `${first}–${last}` : first,
-      range,
-      spark: sparkline(d, r, cells),
-    };
-  });
-}
-
-/** Before/after line for a row of period values. */
-function sparkline(d: SheetData, r: number, cells: CellChange[]): string {
-  // One frequency only: quarters if the sheet has them, otherwise years.
-  const periods = d.meta.periods.map((p, i) => ({ p, c: i + 1 })).filter((x) => x.p !== null);
-  const quarters = periods.filter((x) => x.p!.quarter > 0);
-  const cols = (quarters.length >= 4 ? quarters : periods.filter((x) => x.p!.quarter === 0)).map((x) => x.c);
-  if (cols.length < 4 || cells.length < 2) return "";
-  const changed = new Map(cells.map((c) => [c.c, c]));
-  const after: (number | null)[] = [];
-  const before: (number | null)[] = [];
-  for (const c of cols) {
-    const v = d.cell(r, c)?.value;
-    const a = typeof v === "number" ? v : null;
-    const ch = changed.get(c);
-    after.push(a);
-    before.push(ch ? (typeof ch.beforeValue === "number" ? ch.beforeValue : null) : a);
-  }
-  const all = [...after, ...before].filter((v): v is number => v !== null);
-  if (all.length < 4) return "";
-  const lo = Math.min(...all);
-  const hi = Math.max(...all);
-  const W = 84;
-  const H = 22;
-  const path = (vals: (number | null)[]) =>
-    vals
-      .map((v, i) => (v === null ? null : `${((i / (vals.length - 1)) * W).toFixed(1)},${(H - 2 - ((v - lo) / (hi - lo || 1)) * (H - 4)).toFixed(1)}`))
-      .filter(Boolean)
-      .map((p, i) => `${i ? "L" : "M"}${p}`)
-      .join("");
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><path d="${path(before)}" class="sp-before"/><path d="${path(after)}" class="sp-after"/></svg>`;
-}
-
-/** A formula with its references as chips; with `sheets`, they are clickable. */
-function formulaHtml(f: string, sheets?: { names: string[]; current: number }): string {
-  const re = /((?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!)?(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?)/g;
-  let out = "";
-  let last = 0;
-  for (const m of f.matchAll(re)) {
-    const i = m.index ?? 0;
-    const prev = f[i - 1] ?? "";
-    if (/[A-Za-z0-9_.]/.test(prev) || f[i + m[0].length] === "(") continue;
-    out += esc(f.slice(last, i));
-    const sheet = m[1] ? m[1].slice(0, -1).replace(/^'|'$/g, "").replace(/''/g, "'") : "";
-    const idx = sheets ? (sheet ? sheets.names.indexOf(sheet) : sheets.current) : -1;
-    const cls = sheet && idx !== sheets?.current ? "fref other" : "fref";
-    const ref = /^\$?([A-Z]{1,3})\$?(\d+)/.exec(m[2]);
-    const target =
-      idx >= 0 && ref
-        ? ` data-sheet="${idx}" data-r="${ref[2]}" data-c="${ref[1].split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0)}" role="button"`
-        : "";
-    out += `<span class="${cls}"${target}>${esc(m[0])}</span>`;
-    last = i + m[0].length;
-  }
-  return out + esc(f.slice(last));
 }
 
 const app = new App();
