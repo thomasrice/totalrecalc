@@ -2,6 +2,7 @@
 /src-tauri/gen
 /node_modules
 /dist
+/dist-replay
 /fixtures/*.json
 !/fixtures/demo.json
 # Local workbooks, other than the demo model

@@ -5,7 +5,7 @@ import path from "node:path";
 // In browser mode the UI reads JSON fixtures made by `totalrecalc-dump`.
 // They are served from ./fixtures, or from $TOTALRECALC_FIXTURES when set.
 function fixtures(): Plugin {
-  const dir = fs.realpathSync(process.env.TOTALRECALC_FIXTURES ?? path.resolve(__dirname, "fixtures"));
+  const dir = fs.realpathSync(process.env.TOTALRECALC_FIXTURES ?? path.resolve(import.meta.dirname, "fixtures"));
   return {
     name: "totalrecalc-fixtures",
     configureServer(server) {

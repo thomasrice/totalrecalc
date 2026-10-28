@@ -97,7 +97,7 @@ export class App {
     document.body.classList.add("empty");
     $("#start").innerHTML = `
       <div class="start-card">
-        <img class="start-mark" src="/totalrecalc-mark.svg" alt="" />
+        <img class="start-mark" src="${import.meta.env.BASE_URL}totalrecalc-mark.svg" alt="" />
         <h1>Total Recalc</h1>
         <p class="tagline">Open your mind. Not your file.</p>
         <p>Watch a spreadsheet while an AI agent edits it.</p>
@@ -230,6 +230,12 @@ export class App {
         // If nothing that changed is on screen, offer to go there.
         const seen = (fresh?.changes ?? []).some((ch) => this.grid.isOnScreen(ch.r, ch.c));
         const hasEdits = update.edits + update.rowsAdded > 0;
+        // In an embedded replay (?follow), go straight to the first edit.
+        if (!seen && !this.api.desktop && new URLSearchParams(location.search).has("follow")) {
+          toast(this.updateSentence(update), "update");
+          void this.stepChange(1);
+          return;
+        }
         toast(this.updateSentence(update), "update", !seen && (hasEdits || update.results) ? { label: "Show", run: () => void this.stepChange(1) } : undefined);
       }
     } catch (e) {
@@ -730,7 +736,7 @@ export class App {
         : `<span class="headline quiet">No changes ${this.compareMode === "baseline" ? "since baseline" : "in latest update"}</span>`
       : "";
     bar.innerHTML = `
-      <div class="brand" title="Total Recalc"><img src="/totalrecalc-mark.svg" alt="" /></div>
+      <div class="brand" title="Total Recalc"><img src="${import.meta.env.BASE_URL}totalrecalc-mark.svg" alt="" /></div>
       <div class="file">
         <span class="name">${esc(fileName ?? "")}</span>
         <span class="folder">${esc(i?.folder ?? "")}</span>

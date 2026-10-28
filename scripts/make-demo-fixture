@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Rebuild fixtures/demo.json: the Northwind demo model at its baseline and
+# after each of the demo agent's three steps, as exported by totalrecalc-dump.
+# Needs openpyxl (run under `uv run --with openpyxl` or a venv that has it).
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+python3 - "$work" <<'PY'
+import sys
+sys.path.insert(0, "demo")
+from northwind import Knobs, build
+from agent import STEPS
+build(Knobs()).save(f"{sys.argv[1]}/0.xlsx")
+for i, (_, knobs) in enumerate(STEPS[:3], start=1):
+    build(knobs).save(f"{sys.argv[1]}/{i}.xlsx")
+PY
+
+cargo run --quiet --release --manifest-path "$here/src-tauri/Cargo.toml" --bin totalrecalc-dump -- \
+  "$work"/0.xlsx "$work"/1.xlsx "$work"/2.xlsx "$work"/3.xlsx > "$work/demo.json"
+
+# Present the workbook under its repository path, not the temporary one.
+node -e '
+const fs = require("fs");
+const [file, out] = process.argv.slice(1);
+const f = JSON.parse(fs.readFileSync(file, "utf8"));
+const relabel = (info) => Object.assign(info, { path: "demo/northwind.xlsx", fileName: "northwind.xlsx", folder: "totalrecalc/demo" });
+f.versions.forEach((v) => relabel(v.info));
+Object.values(f.comparisons).forEach((c) => relabel(c.info));
+fs.writeFileSync(out, JSON.stringify(f));
+' "$work/demo.json" "$here/fixtures/demo.json"
+echo "Wrote fixtures/demo.json"

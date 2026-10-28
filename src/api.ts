@@ -2,7 +2,7 @@
 // fixtures exported by `totalrecalc-dump`, so the UI can be developed and
 // photographed without the desktop shell: open `/?fixture=demo`.
 
-import type { BookInfo, Inspection, SheetDiff, SheetPayload, SheetSummary, WatchState } from "./types";
+import type { BookInfo, Inspection, SheetDiff, SheetPayload, WatchState } from "./types";
 
 export interface Opened {
   /** Events from earlier files carry an older session number and are ignored. */
@@ -81,62 +81,91 @@ async function tauriApi(): Promise<Api> {
   };
 }
 
+/** What `totalrecalc-dump` prints: every version, and the comparisons the window asks for. */
 interface Fixture {
-  info: BookInfo;
-  sheets: SheetPayload[];
+  versions: { id: number; info: BookInfo; sheets: Omit<SheetPayload, "diff">[] }[];
+  /** Keyed `"<version>:<compared with>"`. */
+  comparisons: Record<string, { info: BookInfo; diffs: (SheetDiff | null)[] }>;
 }
 
 /**
- * Browser mode. A fixture holds one version, or a version compared with an
- * earlier one; the earlier one is shown first and the newer one arrives
- * shortly after, like a live update.
+ * Browser mode: replays a fixture's versions as if they were arriving from
+ * a watched file. By default each version follows the last after `?delay=`
+ * milliseconds. With `?replay=manual`, a page embedding this one drives it
+ * with `postMessage` (`totalrecalc:step`, `totalrecalc:play`,
+ * `totalrecalc:pause`) and hears `totalrecalc:ready` and
+ * `totalrecalc:version` back. Messages are accepted only from this origin.
  */
 function fixtureApi(name: string): Api {
   let fixture: Promise<Fixture> | null = null;
-  const load = () => (fixture ??= fetch(`/fixtures/${name}.json`).then((r) => r.json() as Promise<Fixture>));
+  const load = () =>
+    (fixture ??= fetch(`${import.meta.env.BASE_URL}fixtures/${name}.json`).then((r) => {
+      if (!r.ok) throw new Error(`No fixture named ${name}`);
+      return r.json() as Promise<Fixture>;
+    }));
   const versionCbs: ((id: number, calculated: boolean) => void)[] = [];
   const watchCbs: ((w: WatchState) => void)[] = [];
-  const noDiff = { changes: [], addedRows: [], removedRows: [], addedCols: [], removedCols: [], newSheet: false, edits: 0, results: 0 };
-  const isDiff = (f: Fixture, version: number, compare?: number) => compare !== undefined && compare === f.info.compare && version === f.info.version;
+  const params = new URLSearchParams(location.search);
+  const manual = params.get("replay") === "manual";
+  const delay = Number(params.get("delay") ?? 1600);
+  const noDiff: SheetDiff = { changes: [], addedRows: [], removedRows: [], addedCols: [], removedCols: [], newSheet: false, edits: 0, results: 0 };
+  const version = (f: Fixture, id: number) => f.versions.find((v) => v.id === id) ?? f.versions[0];
+  const comparison = (f: Fixture, id: number, compare?: number) => (compare === undefined ? undefined : f.comparisons[`${id}:${compare}`]);
+  const held = (f: Fixture, id: number) => f.versions.filter((v) => v.id <= id).map((v) => v.info.versions.find((x) => x.id === v.id)!);
+
+  let shown = 0;
+  let timer = 0;
+  const tell = (msg: object) => window.parent !== window && window.parent.postMessage(msg, location.origin);
+  const emit = async (n: number) => {
+    const f = await load();
+    if (n >= f.versions.length) return;
+    shown = n;
+    versionCbs.forEach((cb) => cb(f.versions[n].id, true));
+    tell({ type: "totalrecalc:version", index: n, total: f.versions.length });
+  };
+  const play = () => {
+    clearInterval(timer);
+    timer = window.setInterval(async () => {
+      const f = await load();
+      if (shown + 1 >= f.versions.length) return clearInterval(timer);
+      void emit(shown + 1);
+    }, delay);
+  };
+  if (manual) {
+    window.addEventListener("message", (e) => {
+      if (e.origin !== location.origin || e.source !== window.parent) return;
+      const type = (e.data as { type?: unknown })?.type;
+      if (type === "totalrecalc:step") void emit(shown + 1);
+      if (type === "totalrecalc:play") play();
+      if (type === "totalrecalc:pause") clearInterval(timer);
+    });
+  }
+
   return {
     desktop: false,
     async openFile() {
       const f = await load();
-      const opened = { session: 1, path: f.info.path };
-      const ids = f.info.versions.map((v) => v.id);
-      const emit = (id: number) => versionCbs.forEach((cb) => cb(id, true));
       setTimeout(() => {
-        emit(ids[0]);
+        void emit(0);
         watchCbs.forEach((cb) => cb({ state: "watching" }));
-        const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1600);
-        if (ids.length > 1) setTimeout(() => emit(ids[ids.length - 1]), delay);
+        tell({ type: "totalrecalc:ready", total: f.versions.length });
+        if (!manual) play();
       }, 0);
-      return opened;
+      return { session: 1, path: f.versions[0].info.path };
     },
-    async bookInfo(version, compare) {
+    async bookInfo(id, compare) {
       const f = await load();
-      const info: BookInfo = { ...f.info, version, watch: { state: "watching" } };
-      if (version !== f.info.version) info.versions = f.info.versions.filter((v) => v.id <= version);
-      if (isDiff(f, version, compare)) return info;
-      return {
-        ...info,
-        compare: undefined,
-        edits: 0,
-        results: 0,
-        rowsAdded: 0,
-        rowsRemoved: 0,
-        removedSheets: [],
-        sheets: info.sheets.map((s: SheetSummary) => ({ ...s, edits: 0, results: 0, structure: 0, newSheet: false })),
-      };
+      const c = comparison(f, id, compare);
+      const info = c?.info ?? { ...version(f, id).info, compare: undefined, compareMissing: false };
+      return { ...info, version: id, versions: held(f, id), watch: { state: "watching" } };
     },
-    async sheet(version, index, compare) {
+    async sheet(id, index, compare) {
       const f = await load();
-      const s = f.sheets[index];
-      return isDiff(f, version, compare) ? s : { ...s, diff: noDiff };
+      return { ...version(f, id).sheets[index], diff: comparison(f, id, compare)?.diffs[index] ?? noDiff };
     },
-    async sheetChanges(version, index, compare) {
+    async sheetChanges(id, index, compare) {
       const f = await load();
-      return isDiff(f, version, compare) ? f.sheets[index].diff : null;
+      return comparison(f, id, compare)?.diffs[index] ?? null;
     },
     async pinVersions() {},
     async inspect() {
