@@ -101,7 +101,12 @@ pub fn diff(old: &Book, new: &Book) -> Diff {
         let name = ns.meta.name.as_str();
         let mut sd = SheetDiff::default();
         let (Some(os), Some(al)) = (old.sheet(name), alignments.get(name)) else {
+            // Everything on a new sheet is the agent's work.
             sd.new_sheet = true;
+            sd.changes =
+                ns.cells.iter().filter(|(_, cell)| has_content(cell)).map(|(&(r, c), _)| change(r, c, Kind::Added, None)).collect();
+            sd.edits = sd.changes.len();
+            out.edits += sd.edits;
             out.sheets.insert(name.to_string(), sd);
             continue;
         };
@@ -109,7 +114,13 @@ pub fn diff(old: &Book, new: &Book) -> Diff {
         let inverse_cols: HashMap<i32, i32> = al.cols.iter().map(|(o, n)| (*n, *o)).collect();
 
         for (&(r, c), cell) in &ns.cells {
-            let (Some(&orow), Some(&ocol)) = (inverse_rows.get(&r), inverse_cols.get(&c)) else { continue };
+            // Cells in an inserted row or column are new content.
+            let (Some(&orow), Some(&ocol)) = (inverse_rows.get(&r), inverse_cols.get(&c)) else {
+                if has_content(cell) {
+                    sd.changes.push(change(r, c, Kind::Added, None));
+                }
+                continue;
+            };
             let before = os.cells.get(&(orow, ocol));
             if let Some(kind) = classify(before, cell, name, &alignments) {
                 sd.changes.push(change(r, c, kind, before));

@@ -27,7 +27,9 @@ export function changesHtml(app: App): string {
     })
     .join("");
   const groups = changeRows(d, (st) => !!app.info?.styles[st]?.percent);
-  const edited = groups.filter((g) => g.edited);
+  // Inserted rows have their own section, with their cell counts there.
+  const addedRows = new Set(d.diff.addedRows);
+  const edited = groups.filter((g) => g.edited && !addedRows.has(g.r));
   const results = groups.filter((g) => !g.edited);
   const rowHtml = (g: ChangeRow) => `
     <button class="chrow ${g.edited ? "edited" : "result"}" data-r="${g.r}" data-c="${g.cells[0].c}">
@@ -51,7 +53,10 @@ export function changesHtml(app: App): string {
     <div class="sheet-head"><b>${esc(d.meta.name)}</b><span class="muted">${d.diff.edits} edits · ${d.diff.results} results</span><button class="icon" data-act="report" title="Copy the change list as Markdown">${icon("copy")}</button></div>
     ${empty ? `<div class="empty-note">${icon("check")} Nothing changed on this sheet${app.compareMode === "baseline" ? " since the baseline" : " in the latest update"}.</div>` : ""}
     ${edited.length ? `<div class="sec">Edited</div>${edited.map(rowHtml).join("")}` : ""}
-    ${d.diff.addedRows.length ? `<div class="sec">Rows added</div>${d.diff.addedRows.map((r) => `<button class="chrow added" data-r="${r}" data-c="1"><span class="bar"></span><span class="lbl">${esc(d.rowLabel(r) || `Row ${r}`)}</span><span class="meta">new row</span></button>`).join("")}` : ""}
+    ${d.diff.addedRows.length ? `<div class="sec">Rows added</div>${d.diff.addedRows.map((r) => `<button class="chrow added" data-r="${r}" data-c="1"><span class="bar"></span><span class="lbl">${esc(d.rowLabel(r) || `Row ${r}`)}</span><span class="meta">new row${(() => {
+      const n = groups.find((g) => g.r === r)?.cells.length ?? 0;
+      return n ? ` · ${n} cell${n === 1 ? "" : "s"}` : "";
+    })()}</span></button>`).join("")}` : ""}
     ${removed.length ? `<div class="sec">Rows removed</div>${removed.map((rr) => `<div class="chrow removed"><span class="bar"></span><span class="lbl">${esc(rr.label || rr.cells.map((c) => c[1]).slice(0, 2).join(" · ") || "Unlabelled row")}</span><span class="meta">${rr.after ? `was below row ${rr.after}` : "was at the top"}</span><span class="rng">${esc(rr.cells.slice(1, 5).map((c) => c[1]).join("  "))}</span></div>`).join("")}` : ""}
     ${results.length ? `<div class="sec">Recalculated</div>${results.map(rowHtml).join("")}` : ""}
     ${other.length ? `<div class="sec">Other sheets</div>${other.map(({ s, idx }) => `<button class="chrow sheetrow" data-sheet="${idx}"><span class="lbl">${esc(s.name)}</span><span class="meta">${s.edits} edits · ${s.results} results${s.structure ? ` · ${s.structure} rows` : ""}</span>${icon("chevron")}</button>`).join("")}` : ""}`;
