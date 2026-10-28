@@ -5,12 +5,13 @@
 use crate::book::{Book, Calc, Cell, Edge, Sheet, SheetMeta, Style, Value};
 use crate::package;
 use crate::periods;
+use crate::refs;
 use anyhow::{Result, anyhow};
 use ironcalc_base::Model;
 use ironcalc_base::cell::CellValue;
 use ironcalc_base::formatter::format::format_number;
 use ironcalc_base::types::{BorderItem, BorderStyle, CellType, Color, HorizontalAlignment, Theme, VerticalAlignment};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
 
 /// Excel's default row height is 15pt; we draw rows a little taller for
@@ -195,34 +196,65 @@ pub fn snapshot(loaded: &Loaded, cached: Option<&Book>) -> Book {
     book
 }
 
-/// After recalculation, reconcile the engine's values with the values the file
-/// saved. A file saved by Excel or LibreOffice carries the results of a real
-/// calculation; one written by a generator library carries none, or
-/// placeholder zeros. When the engine agrees with the saved values almost
-/// everywhere, the saved values are genuine, so wherever the engine disagrees
-/// (a function or construct it handles differently) the saved value is shown,
-/// marked as coming from the file's cache.
+/// (sheet index, row, column)
+type CellKey = (usize, i32, i32);
+
+static UNFAITHFUL: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)\b(INDIRECT|OFFSET|CELL|INFO)\s*\(|\[\d+\]").unwrap());
+
+/// After recalculation, decide which formula cells must show the file's saved
+/// result instead of the engine's. Only cells with an explicit reason qualify:
+/// the engine produced an error where the file saved a value, or the formula
+/// uses a construct the engine cannot evaluate faithfully (INDIRECT, OFFSET,
+/// CELL, INFO, links to other workbooks). Every formula that depends on such a
+/// cell inherits the doubt. Elsewhere the engine's value always wins, so an
+/// edit can never be hidden behind a stale saved result.
 fn reconcile(book: &mut Book, cached: &Book) {
-    let (mut compared, mut agreed) = (0usize, 0usize);
-    for sheet in &book.sheets {
-        let Some(saved) = cached.sheet(&sheet.meta.name) else { continue };
-        for (rc, cell) in &sheet.cells {
-            if cell.formula.is_none() {
-                continue;
+    // Seeds.
+    let mut doubtful: HashSet<CellKey> = HashSet::new();
+    for (si, sheet) in book.sheets.iter().enumerate() {
+        let saved = cached.sheet(&sheet.meta.name);
+        for (&(r, c), cell) in &sheet.cells {
+            let Some(f) = cell.formula.as_deref() else { continue };
+            let saved_ok = saved.and_then(|x| x.cells.get(&(r, c))).is_some_and(|s| s.value != Value::Empty && !s.error);
+            if (cell.error && saved_ok) || UNFAITHFUL.is_match(f) {
+                doubtful.insert((si, r, c));
             }
-            // Zeros are what placeholder writers save, so they prove nothing.
-            if let Some(s) = saved.cells.get(rc).filter(|s| s.value != Value::Empty && s.value != Value::Number(0.0)) {
-                compared += 1;
-                if same(&s.value, &cell.value) && s.error == cell.error {
-                    agreed += 1;
+        }
+    }
+    // Propagate to dependents, through references of modest size (a lookup
+    // over a whole table is itself usually one of the seeds).
+    if !doubtful.is_empty() {
+        let names: HashMap<&str, usize> = book.sheets.iter().enumerate().map(|(i, s)| (s.meta.name.as_str(), i)).collect();
+        let mut readers: HashMap<CellKey, Vec<CellKey>> = HashMap::new();
+        for (si, sheet) in book.sheets.iter().enumerate() {
+            for (&(r, c), cell) in &sheet.cells {
+                let Some(f) = cell.formula.as_deref() else { continue };
+                for rg in refs::ranges(f, &sheet.meta.name) {
+                    let Some(&ti) = names.get(rg.sheet.as_str()) else { continue };
+                    if (rg.r2 - rg.r1 + 1) as i64 * (rg.c2 - rg.c1 + 1) as i64 > 4096 {
+                        continue;
+                    }
+                    for rr in rg.r1..=rg.r2 {
+                        for cc in rg.c1..=rg.c2 {
+                            readers.entry((ti, rr, cc)).or_default().push((si, r, c));
+                        }
+                    }
+                }
+            }
+        }
+        let mut queue: Vec<_> = doubtful.iter().copied().collect();
+        while let Some(k) = queue.pop() {
+            for &d in readers.get(&k).map(|v| v.as_slice()).unwrap_or(&[]) {
+                if doubtful.insert(d) {
+                    queue.push(d);
                 }
             }
         }
     }
-    let trust_cache = compared >= 20 && agreed as f64 >= 0.75 * compared as f64;
-    for sheet in &mut book.sheets {
+    for (si, sheet) in book.sheets.iter_mut().enumerate() {
         let saved = cached.sheet(&sheet.meta.name);
-        for (rc, cell) in sheet.cells.iter_mut() {
+        for (&(r, c), cell) in sheet.cells.iter_mut() {
             if cell.formula.is_none() {
                 continue;
             }
@@ -232,17 +264,20 @@ fn reconcile(book: &mut Book, cached: &Book) {
                 cell.value = Value::Text("#REF!".into());
                 continue;
             }
-            let s = saved.and_then(|x| x.cells.get(rc)).filter(|s| s.value != Value::Empty);
-            match s {
-                Some(s) if (trust_cache || cell.error) && !(same(&s.value, &cell.value) && s.error == cell.error) => {
+            if !doubtful.contains(&(si, r, c)) {
+                continue;
+            }
+            match saved.and_then(|x| x.cells.get(&(r, c))).filter(|s| s.value != Value::Empty) {
+                Some(s) if !(same(&s.value, &cell.value) && s.error == cell.error) => {
                     cell.text = s.text.clone();
                     cell.value = s.value.clone();
                     cell.format_color = s.format_color.clone();
-                    cell.calc = if s.error && cell.error { Calc::Ok } else { Calc::Cached };
+                    cell.calc = Calc::Cached;
                     cell.error = s.error;
                 }
-                None if cell.error && matches!(cell.text.as_str(), "#N/IMPL!" | "#N/IMPL" | "#ERROR!") => cell.calc = Calc::Unavailable,
-                _ => {}
+                Some(_) => {}
+                None if cell.error => cell.calc = Calc::Unavailable,
+                None => {}
             }
         }
     }

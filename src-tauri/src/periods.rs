@@ -49,7 +49,7 @@ pub fn annotate(meta: &mut SheetMeta, cells: &BTreeMap<(i32, i32), Cell>) {
     let mut best: Option<(i32, usize)> = None;
     for r in 1..=scan_to {
         let n = (1..=meta.max_col)
-            .filter(|c| cells.get(&(r, *c)).is_some_and(|cell| is_period_text(cell)))
+            .filter(|c| cells.get(&(r, *c)).is_some_and(is_period_text))
             .count();
         if n >= 3 && best.is_none_or(|(_, m)| n > m) {
             best = Some((r, n));
@@ -75,12 +75,13 @@ pub fn annotate(meta: &mut SheetMeta, cells: &BTreeMap<(i32, i32), Cell>) {
     }
     .min(4);
 
-    if meta.frozen_rows == 0 && meta.frozen_cols == 0 {
-        if let Some(h) = meta.header_row {
-            meta.frozen_rows = h;
-            meta.frozen_cols = meta.label_cols;
-            meta.frozen_inferred = true;
-        }
+    if meta.frozen_rows == 0
+        && meta.frozen_cols == 0
+        && let Some(h) = meta.header_row
+    {
+        meta.frozen_rows = h;
+        meta.frozen_cols = meta.label_cols;
+        meta.frozen_inferred = true;
     }
 }
 

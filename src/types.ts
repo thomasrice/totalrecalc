@@ -129,6 +129,8 @@ export interface BookInfo {
   calc: CalcSummary;
   watch: WatchState;
   compare?: number;
+  /** The requested comparison version is no longer held. */
+  compareMissing: boolean;
   edits: number;
   results: number;
   rowsAdded: number;

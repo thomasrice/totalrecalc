@@ -16,6 +16,7 @@ interface FileMemory {
   sheet?: string;
   collapsed?: Record<string, number[]>;
   panel?: Panel;
+  scroll?: Record<string, { top: number; left: number }>;
 }
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -31,7 +32,8 @@ class App {
   previousBaseline: number | null = null;
   compareMode: CompareMode = "baseline";
   paused = false;
-  pendingWhilePaused = 0;
+  /** Versions that arrived while paused. */
+  pending = new Set<number>();
   sheetIndex = 0;
   data: SheetData | null = null;
   groups: YearGroup[] = [];
@@ -98,19 +100,29 @@ class App {
 
   async open(path: string) {
     document.body.classList.remove("empty");
+    this.loadToken++;
     this.path = path;
     this.info = null;
     this.displayed = this.latest = this.baseline = this.previousBaseline = null;
     this.paused = false;
-    this.pendingWhilePaused = 0;
+    this.pending.clear();
     this.data = null;
+    this.history = [];
     this.watch = { state: "loading" };
+    this.renderTopBar();
+    $("#loading").classList.add("on");
+    try {
+      const opened = await this.api.openFile(path);
+      this.path = opened.path;
+    } catch (e) {
+      $("#loading").classList.remove("on");
+      this.toast(`Could not open ${path}: ${e}`, "info");
+      if (!this.info) this.showStart();
+      return;
+    }
     const mem = this.memory();
     this.collapsed = new Map(Object.entries(mem.collapsed ?? {}).map(([k, v]) => [k, new Set(v)]));
     this.panel = mem.panel ?? null;
-    this.renderTopBar();
-    $("#loading").classList.add("on");
-    await this.api.openFile(path);
   }
 
   memory(): FileMemory {
@@ -122,11 +134,12 @@ class App {
   }
 
   remember() {
-    if (!this.path) return;
+    if (!this.path || !this.data) return;
     const mem: FileMemory = {
-      sheet: this.info?.sheets[this.sheetIndex]?.name,
+      sheet: this.data.meta.name,
       collapsed: Object.fromEntries([...this.collapsed].map(([k, v]) => [k, [...v]])),
       panel: this.panel,
+      scroll: { ...(this.memory().scroll ?? {}), [this.data.meta.name]: this.grid.scrollPos },
     };
     try {
       localStorage.setItem(`cellwake.file:${this.path}`, JSON.stringify(mem));
@@ -137,54 +150,69 @@ class App {
 
   // ------------------------------------------------------------ versions
 
-  onVersion(id: number, calculated: boolean) {
-    const isNew = this.latest === null || id > this.latest;
+  onVersion(id: number, _calculated: boolean) {
     this.latest = Math.max(this.latest ?? 0, id);
     if (this.baseline === null) this.baseline = id;
     if (this.paused && this.displayed !== null && id !== this.displayed) {
-      if (isNew) this.pendingWhilePaused++;
+      this.pending.add(id);
       this.renderTopBar();
       return;
     }
-    void this.display(id, { announce: isNew && this.displayed !== null && this.displayed !== id, recalculated: calculated && !isNew });
+    void this.display(id, { announce: this.displayed !== null && this.displayed !== id });
   }
 
-  compareRef(version: number): number | undefined {
+  compareRef(version: number, versions = this.info?.versions ?? []): number | undefined {
     if (this.compareMode === "baseline") return this.baseline ?? undefined;
-    const vs = this.info?.versions.map((v) => v.id) ?? [];
-    const prev = vs.filter((v) => v < version).pop();
-    return prev;
+    return versions
+      .map((v) => v.id)
+      .filter((v) => v < version)
+      .pop();
   }
 
-  async display(id: number, opts: { announce?: boolean; recalculated?: boolean } = {}) {
+  /**
+   * Show a version. Everything is fetched first and committed at once, and a
+   * newer request (another version, a sheet switch, Pause) abandons this one.
+   */
+  async display(id: number, opts: { announce?: boolean } = {}) {
     const token = ++this.loadToken;
     const prevDisplayed = this.displayed;
     const anchor = this.anchor();
-    let info = await this.api.bookInfo(id, undefined);
-    // The comparison depends on the version list, so ask again once we know it.
-    this.info = info;
-    const ref = this.compareRef(id);
-    if (ref !== undefined && ref !== id) info = await this.api.bookInfo(id, ref);
-    if (token !== this.loadToken) return;
-    this.info = info;
-    this.displayed = id;
-    if (this.watch.state === "loading" || this.watch.state === "calculating") this.watch = info.watch;
-    if (prevDisplayed === null) {
-      const remembered = this.memory().sheet;
-      const idx = info.sheets.findIndex((s) => s.name === remembered);
-      this.sheetIndex = idx >= 0 ? idx : Math.max(0, info.sheets.findIndex((s) => !s.hidden));
+    try {
+      const plain = await this.api.bookInfo(id, undefined);
+      if (token !== this.loadToken) return;
+      let ref = this.compareRef(id, plain.versions);
+      let info = ref !== undefined && ref !== id ? await this.api.bookInfo(id, ref) : plain;
+      if (info.compareMissing && this.compareMode === "baseline") {
+        // The baseline aged out of memory: fall back to the oldest version held.
+        this.baseline = plain.versions[0]?.id ?? id;
+        ref = this.baseline;
+        info = await this.api.bookInfo(id, ref);
+        this.toast("The baseline was no longer held; comparing with the oldest version", "info");
+      }
+      if (token !== this.loadToken) return;
+      // Stay on the same sheet by name, even if sheets were added or reordered.
+      const wanted = this.data?.meta.name ?? this.memory().sheet;
+      let index = info.sheets.findIndex((s) => s.name === wanted);
+      if (index < 0) index = prevDisplayed === null ? Math.max(0, info.sheets.findIndex((s) => !s.hidden)) : Math.min(this.sheetIndex, info.sheets.length - 1);
+      const payload = await this.api.sheet(id, index, ref !== id ? ref : undefined);
+      if (token !== this.loadToken) return;
+      this.info = info;
+      this.displayed = id;
+      this.sheetIndex = index;
+      if (this.watch.state === "loading") this.watch = info.watch;
+      this.applySheet(new SheetData(payload), prevDisplayed === null ? "first" : anchor);
+      $("#loading").classList.remove("on");
+      void this.api.pinVersions([this.displayed, this.baseline, this.previousBaseline].filter((v): v is number => v !== null));
+      if (opts.announce && prevDisplayed !== null) {
+        const fresh = await this.api.sheetChanges(id, index, prevDisplayed);
+        if (token !== this.loadToken) return;
+        if (fresh) this.grid.wake(fresh.changes, reducedMotion.matches);
+        const update = await this.api.bookInfo(id, prevDisplayed);
+        if (token === this.loadToken) this.toast(this.updateSentence(update), "update");
+      }
+    } catch (e) {
+      if (token === this.loadToken) this.toast(`Could not show that version: ${e}`, "info");
     }
-    this.sheetIndex = Math.min(this.sheetIndex, info.sheets.length - 1);
-    await this.loadSheet({ anchor, keepSelection: prevDisplayed !== null });
-    if (token !== this.loadToken) return;
-    $("#loading").classList.remove("on");
-    if (opts.announce && prevDisplayed !== null) {
-      const fresh = await this.api.sheet(id, this.sheetIndex, prevDisplayed);
-      this.grid.wake(fresh.diff.changes, reducedMotion.matches);
-      const update = await this.api.bookInfo(id, prevDisplayed);
-      this.toast(this.updateSentence(update), "update");
-    }
-    this.renderAll();
   }
 
   updateSentence(i: BookInfo): string {
@@ -196,68 +224,97 @@ class App {
     return parts.length ? `Updated · ${parts.join(" · ")}` : "Updated · no visible changes";
   }
 
-  async loadSheet(opts: { anchor?: Anchor | null; keepSelection?: boolean } = {}) {
+  /** Switch to another sheet of the version on screen. */
+  async loadSheet() {
     if (!this.info || this.displayed === null) return;
+    const token = ++this.loadToken;
     const ref = this.compareRef(this.displayed);
-    const payload = await this.api.sheet(this.displayed, this.sheetIndex, ref !== this.displayed ? ref : undefined);
-    const data = new SheetData(payload);
+    // Large sheets take a moment to arrive; say so if it is noticeable.
+    const slow = window.setTimeout(() => {
+      $("#loading span").textContent = `Loading ${this.info?.sheets[this.sheetIndex]?.name ?? "sheet"}…`;
+      $("#loading").classList.add("on");
+    }, 180);
+    try {
+      this.remember();
+      const payload = await this.api.sheet(this.displayed, this.sheetIndex, ref !== this.displayed ? ref : undefined);
+      if (token !== this.loadToken) return;
+      this.applySheet(new SheetData(payload), "fresh");
+    } catch (e) {
+      if (token === this.loadToken) this.toast(`Could not load the sheet: ${e}`, "info");
+    } finally {
+      clearTimeout(slow);
+      $("#loading").classList.remove("on");
+      $("#loading span").textContent = "Reading workbook…";
+    }
+  }
+
+  /** Put a loaded sheet on screen: keep the place (anchor), or start fresh. */
+  applySheet(data: SheetData, place: Anchor | null | "first" | "fresh") {
     const sameSheet = this.data?.meta.name === data.meta.name;
     this.data = data;
+    this.inspection = null;
     this.groups = yearGroups(data.meta);
     const collapsed = this.collapsed.get(data.meta.name) ?? new Set<number>();
+    for (const y of [...collapsed]) if (!this.groups.some((g) => g.year === y)) collapsed.delete(y);
     this.collapsed.set(data.meta.name, collapsed);
-    const viewCols = buildViewCols(data.meta, this.groups, collapsed);
-    const prevScroll = this.grid.scrollPos;
-    this.grid.setSheet(data, this.info.styles, this.groups, collapsed, viewCols);
-    if (opts.anchor && sameSheet) this.restore(opts.anchor);
-    else if (!opts.keepSelection || !sameSheet) {
-      this.grid.scrollPos = { top: 0, left: 0 };
-      const r = Math.min(this.grid.rowCount - 1, Math.max(0, (data.meta.headerRow ?? 0)));
-      this.grid.select(r, Math.min(this.grid.colCount - 1, Math.max(0, data.meta.labelCols)));
-    } else this.grid.scrollPos = prevScroll;
+    this.grid.setSheet(data, this.info!.styles, this.groups, collapsed, buildViewCols(data.meta, this.groups, collapsed));
+    if (place && typeof place === "object" && sameSheet) this.restore(place);
+    else {
+      const saved = this.memory().scroll?.[data.meta.name];
+      this.grid.scrollPos = saved ?? { top: 0, left: 0 };
+      const r = Math.min(this.grid.rowCount - 1, Math.max(0, data.meta.headerRow ?? 0));
+      const c = Math.min(this.grid.colCount - 1, Math.max(0, data.meta.labelCols));
+      this.grid.setSelection({ row: r, col: c, row2: r, col2: c }, !saved);
+    }
     this.remember();
     this.renderAll();
   }
 
-  // Keeping your place: the selected cell is identified by meaning.
+  // Keeping your place: both corners of the selection are identified by meaning.
   anchor(): Anchor | null {
     const d = this.data;
     if (!d) return null;
-    const row = this.grid.rowOf(this.grid.sel.row);
-    const vc = this.grid.colOf(this.grid.sel.col);
-    if (row === undefined || !vc || vc.kind !== "sheet") return null;
-    return {
-      label: d.rowLabel(row),
-      occurrence: occurrence(d, row),
-      row,
-      header: d.colHeader(vc.col),
-      col: vc.col,
-      offset: this.grid.rowScreenOffset(this.grid.sel.row),
-      left: this.grid.scrollPos.left,
+    const point = (vr: number, vcIndex: number): Point | null => {
+      const row = this.grid.rowOf(vr);
+      const vc = this.grid.colOf(vcIndex);
+      if (row === undefined || !vc || vc.kind !== "sheet") return null;
+      return { label: d.rowLabel(row), occurrence: occurrence(d, row), row, header: d.colHeader(vc.col), col: vc.col };
     };
+    const s = this.grid.sel;
+    const active = point(s.row, s.col);
+    if (!active) return null;
+    return { active, other: point(s.row2, s.col2) ?? active, offset: this.grid.rowScreenOffset(s.row), left: this.grid.scrollPos.left };
   }
 
   restore(a: Anchor) {
     const d = this.data!;
-    let row = a.row;
-    if (a.label) {
-      let seen = 0;
-      for (let r = 1; r <= d.meta.maxRow; r++) {
-        if (d.rowLabel(r) === a.label && ++seen === a.occurrence) {
-          row = r;
-          break;
+    const find = (p: Point): [number, number] => {
+      let row = p.row;
+      if (p.label) {
+        let seen = 0;
+        for (let r = 1; r <= d.meta.maxRow; r++) {
+          if (d.rowLabel(r) === p.label && ++seen === p.occurrence) {
+            row = r;
+            break;
+          }
         }
       }
-    }
-    let col = a.col;
-    if (a.header) {
-      for (let c = 1; c <= d.meta.maxCol; c++) if (d.colHeader(c) === a.header) col = c;
-    }
-    const vr = this.grid.viewRowOf(row) ?? 0;
-    const vc = this.grid.viewColOf(col) ?? 0;
+      let col = p.col;
+      if (p.header) {
+        for (let c = 1; c <= d.meta.maxCol; c++) {
+          if (d.colHeader(c) === p.header) {
+            col = c;
+            break;
+          }
+        }
+      }
+      return [this.grid.viewRowOf(row) ?? 0, this.grid.viewColOf(col) ?? 0];
+    };
+    const [r, c] = find(a.active);
+    const [r2, c2] = find(a.other);
     this.grid.scrollPos = { top: this.grid.scrollPos.top, left: a.left };
-    this.grid.setRowScreenOffset(vr, a.offset);
-    this.grid.select(vr, vc);
+    this.grid.setRowScreenOffset(r, a.offset);
+    this.grid.setSelection({ row: r, col: c, row2: r2, col2: c2 }, false);
   }
 
   // ------------------------------------------------------------ actions
@@ -273,7 +330,7 @@ class App {
     this.baseline = id ?? this.displayed;
     this.compareMode = "baseline";
     void this.display(this.displayed);
-    this.toast(`Baseline set to ${clock(this.versionAt(this.baseline))}`, "info", { label: "Undo", run: () => this.undoBaseline() });
+    this.toast(`Baseline set to ${this.versionName(this.baseline)}`, "info", { label: "Undo", run: () => this.undoBaseline() });
   }
 
   undoBaseline() {
@@ -289,9 +346,13 @@ class App {
 
   togglePause() {
     this.paused = !this.paused;
-    if (!this.paused) {
-      const n = this.pendingWhilePaused;
-      this.pendingWhilePaused = 0;
+    if (this.paused) {
+      // Abandon any version that was on its way to the screen.
+      this.loadToken++;
+      if (this.latest !== null && this.latest !== this.displayed) this.pending.add(this.latest);
+    } else {
+      const n = this.pending.size;
+      this.pending.clear();
       if (this.latest !== null && this.latest !== this.displayed) void this.display(this.latest, { announce: true });
       else if (n === 0) this.toast("Resumed · nothing changed while paused", "info");
     }
@@ -352,10 +413,15 @@ class App {
     this.renderTopBar();
   }
 
-  /** Step through changes in reading order, across sheets. */
+  /**
+   * Step through edits in reading order, across sheets. Recalculated results
+   * are reached from the Changes panel; when a version has no edits at all,
+   * stepping falls back to results.
+   */
   async stepChange(dir: 1 | -1) {
     const d = this.data;
     if (!d || !this.info) return;
+    this.onlyEdits = this.info.edits + this.info.rowsAdded > 0;
     const list = this.visibleChanges();
     const cur = { r: this.grid.rowOf(this.grid.sel.row) ?? 0, c: this.currentCol() ?? 0 };
     const idx = dir > 0 ? list.findIndex((ch) => ch.r > cur.r || (ch.r === cur.r && ch.c > cur.c)) : findLastIndex(list, (ch) => ch.r < cur.r || (ch.r === cur.r && ch.c < cur.c));
@@ -365,20 +431,47 @@ class App {
     for (let k = 1; k < n; k++) {
       const i = (this.sheetIndex + dir * k + n) % n;
       const s = this.info.sheets[i];
-      if (s.edits + s.results > 0) {
+      if (this.onlyEdits ? s.edits + s.structure > 0 : s.results > 0) {
         this.sheetIndex = i;
         await this.loadSheet();
         const l = this.visibleChanges();
         if (l.length) this.goToChange(dir > 0 ? l[0] : l[l.length - 1]);
-        this.toast(`${s.name}`, "info");
+        this.flashRail(i);
         return;
       }
     }
     if (list.length) this.goToChange(dir > 0 ? list[0] : list[list.length - 1]);
   }
 
+  /** Whether n/N step through edits only (true unless the version has none). */
+  onlyEdits = true;
+
   visibleChanges(): CellChange[] {
-    return this.data?.changeList ?? [];
+    const all = this.data?.changeList ?? [];
+    return this.onlyEdits ? all.filter((c) => c.kind !== "result") : all;
+  }
+
+  flashRail(i: number) {
+    const el = document.querySelector(`#rail [data-i="${i}"]`);
+    el?.classList.remove("flash");
+    void (el as HTMLElement | null)?.offsetWidth;
+    el?.classList.add("flash");
+  }
+
+  versionName(id: number | null): string {
+    const vs = this.info?.versions ?? [];
+    const v = vs.find((x) => x.id === id);
+    if (!v) return "an earlier version";
+    return `v${vs.indexOf(v) + 1} · ${clock(v.at)}`;
+  }
+
+  async writeClipboard(text: string, what: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast(`Copied ${what}`, "info");
+    } catch {
+      this.toast("Couldn't reach the clipboard", "info");
+    }
   }
 
   goToChange(ch: CellChange) {
@@ -457,7 +550,7 @@ class App {
       text = rows.map((line) => line.map(({ r, c }) => d.cell(r, c)?.text ?? "").join("\t")).join("\n");
       count = rows.reduce((n, l) => n + l.length, 0);
     } else {
-      const lines = [`**${this.info.fileName}** · sheet **${d.meta.name}** · version ${clock(this.versionAt(this.displayed))}`, ""];
+      const lines = [`**${this.info.fileName}** · sheet **${d.meta.name}** · ${this.versionName(this.displayed)}`, ""];
       for (const line of rows) {
         for (const { r, c } of line) {
           const cell = d.cell(r, c);
@@ -478,20 +571,30 @@ class App {
       }
       text = lines.join("\n");
     }
-    await navigator.clipboard.writeText(text);
-    this.toast(`Copied ${count} cell${count === 1 ? "" : "s"}${withContext ? " with context" : ""}`, "info");
+    await this.writeClipboard(text, `${count} cell${count === 1 ? "" : "s"}${withContext ? " with context" : ""}`);
   }
 
   async copyChangeReport() {
     const d = this.data;
     if (!d || !this.info) return;
-    const lines = [`**${this.info.fileName}** · changes ${this.compareMode === "baseline" ? `since ${clock(this.versionAt(this.baseline))}` : "in the latest update"}`, ""];
-    for (const g of changeRows(d)) {
-      lines.push(`- **${d.meta.name}** · ${g.label || `row ${g.r}`}: ${g.cells.length} cell${g.cells.length === 1 ? "" : "s"} (${g.edited ? "edited" : "recalculated"})${g.span ? ` · ${g.span}` : ""}${g.range ? ` · ${g.range}` : ""}`);
+    const i = this.info;
+    const lines = [
+      `**${i.fileName}** · ${this.versionName(this.displayed)} compared with ${this.compareMode === "baseline" ? `the baseline, ${this.versionName(this.baseline)}` : "the previous version"}: ${i.edits} edits, ${i.results} recalculated, ${i.rowsAdded} rows added, ${i.rowsRemoved} removed.`,
+      "",
+      `**${d.meta.name}**`,
+    ];
+    const rows = changeRows(d);
+    for (const g of rows.filter((g) => g.edited)) lines.push(`- ${g.label || `Row ${g.r}`}: edited, ${g.cells.length} cell${g.cells.length === 1 ? "" : "s"}${g.span ? `, ${g.span}` : ""}${g.range ? `, ${g.range}` : ""}`);
+    for (const r of d.diff.addedRows) lines.push(`- ${d.rowLabel(r) || `Row ${r}`}: new row`);
+    for (const rr of d.diff.removedRows) lines.push(`- ${rr.label || rr.cells.map((c) => c[1]).slice(0, 3).join(" | ")}: removed`);
+    for (const g of rows.filter((g) => !g.edited)) lines.push(`- ${g.label || `Row ${g.r}`}: recalculated, ${g.cells.length} cell${g.cells.length === 1 ? "" : "s"}${g.range ? `, ${g.range}` : ""}`);
+    const others = i.sheets.filter((s, idx) => idx !== this.sheetIndex && s.edits + s.results + s.structure > 0);
+    if (others.length) {
+      lines.push("", "Other sheets:");
+      for (const s of others) lines.push(`- ${s.name}: ${s.edits} edits, ${s.results} recalculated${s.structure ? `, ${s.structure} rows added or removed` : ""}`);
     }
-    for (const rr of d.diff.removedRows) lines.push(`- **${d.meta.name}** · removed row: ${rr.label || rr.cells.map((c) => c[1]).slice(0, 3).join(" | ")}`);
-    await navigator.clipboard.writeText(lines.join("\n"));
-    this.toast("Copied the change report", "info");
+    if (i.removedSheets.length) lines.push("", `Sheets removed: ${i.removedSheets.join(", ")}`);
+    await this.writeClipboard(lines.join("\n"), "the change report");
   }
 
   // ------------------------------------------------------------ keyboard
@@ -502,6 +605,12 @@ class App {
       if (e.key === "Escape") this.closeOverlays();
       return;
     }
+    // Overlays take their own keys; buttons keep Enter, Space and Tab.
+    if ($("#overlay").classList.contains("on")) {
+      if (e.key === "Escape") this.closeOverlays();
+      return;
+    }
+    if (target.closest("button") && ["Enter", " ", "Tab"].includes(e.key)) return;
     if (document.body.classList.contains("empty")) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
@@ -663,14 +772,28 @@ class App {
   async inspect() {
     const d = this.data;
     const c = this.currentCol();
-    if (!d || this.displayed === null || c === undefined) {
+    const version = this.displayed;
+    if (!d || version === null || c === undefined) {
+      // A derived column or nothing selected: nothing to look up.
+      this.inspection = { inputs: [], usedBy: [] };
       this.renderPanel();
       return;
     }
     const r = this.grid.rowOf(this.grid.sel.row);
-    this.inspection = await this.api.inspect(this.displayed, this.sheetIndex, r, c);
+    const key = `${version}:${this.sheetIndex}:${r}:${c}`;
+    this.inspecting = key;
+    try {
+      const result = await this.api.inspect(version, this.sheetIndex, r, c);
+      if (this.inspecting !== key) return;
+      this.inspection = result;
+    } catch {
+      if (this.inspecting !== key) return;
+      this.inspection = { inputs: [], usedBy: [] };
+    }
     this.renderPanel();
   }
+
+  private inspecting = "";
 
   // ------------------------------------------------------------- render
 
@@ -706,9 +829,10 @@ class App {
     const fileName = i?.fileName ?? (this.path ? this.path.split(/[\\/]/).pop() : "");
     let live: string;
     if (this.paused) {
-      live = `<span class="live paused">${icon("pause")} Paused${this.pendingWhilePaused ? ` · <b>${this.pendingWhilePaused} newer version${this.pendingWhilePaused === 1 ? "" : "s"}</b>` : ""}</span>`;
+      live = `<span class="live paused">${icon("pause")} Paused${this.pending.size ? ` · <b>${this.pending.size} newer version${this.pending.size === 1 ? "" : "s"}</b>` : ""}</span>`;
     } else if (w.state === "error") {
-      live = `<span class="live error" title="${esc(w.message ?? "")}">${icon("alert")} ${esc(w.message ?? "Cannot read the file")}${this.displayed ? ` · showing ${clock(this.versionAt(this.displayed))}` : ""}</span>`;
+      const since = w.since ? ` since ${clock(w.since)}` : "";
+      live = `<span class="live error" title="${esc(`${w.message ?? "Cannot read the file"}${since}. Cellwake keeps trying and keeps showing the last good version.`)}">${icon("alert")} Can't read the file${this.displayed ? ` · showing ${this.versionName(this.displayed).split(" · ")[0]}` : ""}</span>`;
     } else if (w.state === "writing") {
       live = `<span class="live writing"><i class="dot"></i> File is being written…</span>`;
     } else if (w.state === "calculating" || (i && !i.calc.calculated)) {
@@ -722,7 +846,7 @@ class App {
     const total = i ? i.edits + i.results : 0;
     const headline = i
       ? total || i.rowsAdded || i.rowsRemoved
-        ? `<button class="headline" data-act="changes" title="Show changes (d)"><b class="edits">${i.edits}</b> edit${i.edits === 1 ? "" : "s"}<span class="sep">·</span><b class="results">${i.results}</b> result${i.results === 1 ? "" : "s"}${i.rowsAdded ? `<span class="sep">·</span>${i.rowsAdded} row${i.rowsAdded === 1 ? "" : "s"} added` : ""}${i.rowsRemoved ? `<span class="sep">·</span>${i.rowsRemoved} removed` : ""}<span class="muted"> ${this.compareMode === "baseline" ? `since ${clock(this.versionAt(this.baseline))}` : "in latest update"}</span></button>`
+        ? `<button class="headline" data-act="changes" title="Show changes (d)"><b class="edits">${i.edits}</b> edit${i.edits === 1 ? "" : "s"}<span class="sep">·</span><b class="results">${i.results}</b> result${i.results === 1 ? "" : "s"}${i.rowsAdded ? `<span class="sep">·</span>${i.rowsAdded} row${i.rowsAdded === 1 ? "" : "s"} added` : ""}${i.rowsRemoved ? `<span class="sep">·</span>${i.rowsRemoved} removed` : ""}<span class="muted"> ${this.compareMode === "baseline" ? `since v${(this.info?.versions.findIndex((v) => v.id === this.baseline) ?? 0) + 1}` : "in latest update"}</span></button>`
         : `<span class="headline quiet">No changes ${this.compareMode === "baseline" ? "since baseline" : "in latest update"}</span>`
       : "";
     bar.innerHTML = `
@@ -760,6 +884,17 @@ class App {
     document.title = fileName ? `${fileName} — Cellwake` : "Cellwake";
   }
 
+  /** Step to the next cell showing a value from the file's cache. */
+  nextCachedCell() {
+    const d = this.data;
+    if (!d) return;
+    const cells = [...d.allCells()].filter((c) => c.calc !== 0).sort((a, b) => a.r - b.r || a.c - b.c);
+    if (!cells.length) return this.toast("None on this sheet", "info");
+    const cur = { r: this.grid.rowOf(this.grid.sel.row), c: this.currentCol() ?? 0 };
+    const next = cells.find((x) => x.r > cur.r || (x.r === cur.r && x.c > cur.c)) ?? cells[0];
+    void this.jumpTo(this.sheetIndex, next.r, next.c, false);
+  }
+
   renderPeek() {
     const el = $("#peek");
     const d = this.data;
@@ -781,12 +916,15 @@ class App {
     const percent = !!this.info.styles[cell?.style ?? 0]?.percent;
     const dl = ch ? delta(ch.beforeValue, cell?.value ?? null, cell?.text ?? "", percent) : "";
     const kind = ch ? `<span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span>` : "";
+    // In the label columns the cell is its own label: don't say it twice.
+    const isLabel = vc.col <= d.meta.labelCols;
+    const what = isLabel ? header : [label || "—", header].filter(Boolean).join(" · ");
     el.innerHTML = `
       <span class="addr">${address(row, vc.col)}</span>
-      <span class="what">${esc(label || "—")}${header ? ` <span class="muted">·</span> ${esc(header)}` : ""}</span>
-      <span class="value ${cell?.error ? "err" : ""} ${cell?.text ? "" : "empty"}">${esc(cell?.text || "Empty")}</span>
+      ${what ? `<span class="what">${esc(what)}</span>` : ""}
+      <span class="value ${cell?.error ? "err" : ""} ${cell?.text ? "" : "empty"}">${esc(cell?.text || "blank")}</span>
       ${ch ? `<span class="was">was ${esc(shortValue(ch.beforeValue, ch.beforeText))}</span>${dl ? `<span class="delta">${esc(dl)}</span>` : ""}${kind}` : ""}
-      ${cell?.calc === 1 ? `<span class="calc-note" title="The engine could not calculate this formula; the value saved in the file is shown">from file cache</span>` : ""}
+      ${cell?.calc === 1 ? `<span class="calc-note" title="Cellwake's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved in the file is shown">from file cache</span>` : ""}
       ${cell?.formula ? `<span class="formula" title="${esc(cell.formula)}">${formulaHtml(cell.formula)}</span>` : ""}
       ${cell?.comment ? `<span class="comment-note" title="${esc(cell.comment)}">${icon("note")}</span>` : ""}`;
   }
@@ -803,9 +941,14 @@ class App {
       i.sheets
         .map((s, idx) => {
           if (s.hidden) return "";
-          const n = s.edits;
-          const badge = n ? `<span class="badge edits" title="${n} edit${n === 1 ? "" : "s"}, ${s.results} result${s.results === 1 ? "" : "s"}">${n}</span>` : s.results ? `<span class="badge results" title="${s.results} recalculated">${s.results}</span>` : "";
-          return `<button class="sheet ${idx === this.sheetIndex ? "on" : ""} ${s.newSheet ? "new" : ""}" data-i="${idx}"><span class="nm">${esc(s.name)}</span>${badge}</button>`;
+          const n = s.edits + s.structure;
+          const badge = n
+            ? `<span class="badge edits" title="${s.edits} edit${s.edits === 1 ? "" : "s"}${s.structure ? `, ${s.structure} rows added or removed` : ""}, ${s.results} recalculated">${n}</span>`
+            : s.results
+              ? `<span class="dot-results" title="${s.results} recalculated"></span>`
+              : "";
+          const initials = s.name.split(/[\s&_-]+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || s.name.slice(0, 2);
+          return `<button class="sheet ${idx === this.sheetIndex ? "on" : ""} ${s.newSheet ? "new" : ""}" data-i="${idx}" aria-label="${esc(s.name)}"><span class="ini">${esc(initials)}</span><span class="nm">${esc(s.name)}</span>${badge}</button>`;
         })
         .join("") +
       (i.sheets.some((s) => s.hidden) ? `<div class="rail-foot">${i.sheets.filter((s) => s.hidden).length} hidden</div>` : "") +
@@ -827,10 +970,10 @@ class App {
     const cells = this.selectionCells().flat();
     const nums = cells.map(({ r, c }) => d.cell(r, c)?.value).filter((v): v is number => typeof v === "number");
     const sum = nums.reduce((a, b) => a + b, 0);
-    const fmt = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    const fmt = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: Math.abs(v) >= 100 ? 1 : 3 });
     const sel =
       nums.length > 1
-        ? `<span>Sum <b>${fmt(sum)}</b></span><span>Average <b>${fmt(sum / nums.length)}</b></span><span>Count <b>${cells.filter(({ r, c }) => d.cell(r, c)?.text).length}</b></span>`
+        ? `<span>Sum <b>${fmt(sum)}</b></span><span>Avg <b>${fmt(sum / nums.length)}</b></span><span>Count <b>${cells.filter(({ r, c }) => d.cell(r, c)?.text).length}</b></span>`
         : "";
     const row = this.grid.rowOf(this.grid.sel.row);
     const vc = this.grid.colOf(this.grid.sel.col);
@@ -839,7 +982,7 @@ class App {
     const calc = !c.calculated
       ? `<span class="calc pending">Recalculating…</span>`
       : c.cached || c.unavailable
-        ? `<span class="calc warn" title="Some formulas use functions the engine does not support">${c.cached ? `${c.cached} from file cache` : ""}${c.cached && c.unavailable ? " · " : ""}${c.unavailable ? `${c.unavailable} unavailable` : ""}</span>`
+        ? `<button class="calc warn" data-act="cached" title="Formulas Cellwake's engine cannot evaluate faithfully show the value Excel saved. Click to step through them.">${c.cached ? `${c.cached.toLocaleString()} from file cache` : ""}${c.cached && c.unavailable ? " · " : ""}${c.unavailable ? `${c.unavailable.toLocaleString()} unavailable` : ""}</button>`
         : `<span class="calc ok">${icon("check")} All values calculated</span>`;
     el.innerHTML = `
       <span class="addr">${esc(addr)}</span>
@@ -851,7 +994,9 @@ class App {
       <span class="muted">${Math.round(this.grid.getZoom() * 100)}%</span>
       <button class="link" data-act="help">? Shortcuts</button>`;
     el.onclick = (e) => {
-      if ((e.target as HTMLElement).closest("[data-act=help]")) this.showHelp();
+      const t = e.target as HTMLElement;
+      if (t.closest("[data-act=help]")) this.showHelp();
+      if (t.closest("[data-act=cached]")) this.nextCachedCell();
     };
   }
 
@@ -881,7 +1026,7 @@ class App {
     const timeline = versions
       .map((v) => {
         const cls = [v.id === this.displayed ? "shown" : "", v.id === this.baseline ? "base" : ""].join(" ");
-        return `<button class="ver ${cls}" data-ver="${v.id}" title="${v.id === this.baseline ? "Baseline" : "Click to make this the baseline"}">${clock(v.at)}${v.id === this.baseline ? " · base" : ""}</button>`;
+        return `<button class="ver ${cls}" data-ver="${v.id}" title="${v.id === this.baseline ? "The baseline" : "Make this version the baseline"}"><b>v${versions.indexOf(v) + 1}</b> ${clock(v.at)}${v.id === this.baseline ? " · base" : ""}</button>`;
       })
       .join("");
     const groups = changeRows(d);
@@ -906,7 +1051,7 @@ class App {
         <button class="${this.compareMode === "latest" ? "on" : ""}" data-mode="latest">Latest update</button>
       </div>
       <div class="timeline">${timeline}</div>
-      <div class="sheet-head"><b>${esc(d.meta.name)}</b><span class="muted">${d.diff.edits} edits · ${d.diff.results} results</span><button class="link" data-act="report" title="Copy the change list as Markdown">${icon("copy")} Copy report</button></div>
+      <div class="sheet-head"><b>${esc(d.meta.name)}</b><span class="muted">${d.diff.edits} edits · ${d.diff.results} results</span><button class="icon" data-act="report" title="Copy the change list as Markdown">${icon("copy")}</button></div>
       ${empty ? `<div class="empty-note">${icon("check")} Nothing changed on this sheet${this.compareMode === "baseline" ? " since the baseline" : " in the latest update"}.</div>` : ""}
       ${edited.length ? `<div class="sec">Edited</div>${edited.map(rowHtml).join("")}` : ""}
       ${d.diff.addedRows.length ? `<div class="sec">Rows added</div>${d.diff.addedRows.map((r) => `<button class="chrow added" data-r="${r}" data-c="1"><span class="bar"></span><span class="lbl">${esc(d.rowLabel(r) || `Row ${r}`)}</span><span class="meta">new row</span></button>`).join("")}` : ""}
@@ -973,16 +1118,8 @@ class App {
     const sheetRow = t.closest<HTMLElement>("[data-sheet]");
     if (sheetRow?.classList.contains("sheetrow")) return void this.switchSheet(Number(sheetRow.dataset.sheet));
     const row = t.closest<HTMLElement>(".chrow[data-r]");
-    if (row) {
-      const vr = this.grid.viewRowOf(Number(row.dataset.r));
-      let vc = this.grid.viewColOf(Number(row.dataset.c));
-      if (vc === undefined) vc = this.grid.viewColOf(1) ?? 0;
-      if (vr !== undefined) {
-        this.grid.reveal(vr, vc);
-        this.grid.select(vr, vc);
-        this.grid.focus();
-      }
-    }
+    // jumpTo opens a collapsed year if the change is inside it.
+    if (row) void this.jumpTo(this.sheetIndex, Number(row.dataset.r), Number(row.dataset.c), false);
   }
 
   highlightChangeRow() {
@@ -1016,9 +1153,11 @@ class App {
     const r = this.grid.rowOf(row);
     const ch = d.change(r, vc.col);
     const cell = d.cell(r, vc.col);
-    if (!ch && !cell?.comment) return void tip.classList.remove("on");
+    // Long labels clipped by their column: show the whole text.
+    const clipped = !!cell && typeof cell.value === "string" && cell.text.length * 7 > vc.width * this.grid.getZoom() - 10 && vc.col <= d.meta.labelCols;
+    if (!ch && !cell?.comment && !clipped) return void tip.classList.remove("on");
     const percent = !!this.info?.styles[cell?.style ?? 0]?.percent;
-    tip.innerHTML = `${ch ? `<div><span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span> ${esc(shortValue(ch.beforeValue, ch.beforeText))} → <b>${esc(cell?.text || "blank")}</b> <span class="delta">${esc(delta(ch.beforeValue, cell?.value ?? null, cell?.text ?? "", percent))}</span></div>` : ""}${cell?.comment ? `<div class="tip-note">${esc(cell.comment)}</div>` : ""}`;
+    tip.innerHTML = `${clipped && !ch ? `<div>${esc(cell!.text)}</div>` : ""}${ch ? `<div><span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span> ${esc(shortValue(ch.beforeValue, ch.beforeText))} → <b>${esc(cell?.text || "blank")}</b> <span class="delta">${esc(delta(ch.beforeValue, cell?.value ?? null, cell?.text ?? "", percent))}</span></div>` : ""}${cell?.comment ? `<div class="tip-note">${esc(cell.comment)}</div>` : ""}`;
     tip.style.left = `${Math.min(x + 14, innerWidth - 340)}px`;
     tip.style.top = `${y + 18}px`;
     tip.classList.add("on");
@@ -1097,7 +1236,16 @@ class App {
       list.innerHTML = items
         .slice(0, 60)
         .map((it, i) => `<button class="pal-item ${i === active ? "on" : ""}" data-i="${i}"><span class="pk">${it.kind}</span><span class="pt">${esc(it.title)}</span>${it.hint ? `<span class="ph">${esc(it.hint)}</span>` : ""}</button>`)
-        .join("") || `<div class="muted small pad">No matches</div>`;
+        .join("") ||
+        `<div class="muted small pad">${
+          input.value.trim()
+            ? "No matches"
+            : mode === "go"
+              ? "Type a cell address such as B12, or a row label such as Revenue."
+              : mode === "find"
+                ? "Type to search the values and labels on this sheet."
+                : ""
+        }</div>`;
       list.querySelector(".on")?.scrollIntoView({ block: "nearest" });
     };
     input.oninput = () => {
@@ -1189,12 +1337,17 @@ interface PaletteItem {
   run: () => void;
 }
 
-interface Anchor {
+interface Point {
   label: string;
   occurrence: number;
   row: number;
   header: string;
   col: number;
+}
+
+interface Anchor {
+  active: Point;
+  other: Point;
   offset: number;
   left: number;
 }
@@ -1259,7 +1412,10 @@ function changeRows(d: SheetData): ChangeRow[] {
 
 /** Before/after line for a row of period values. */
 function sparkline(d: SheetData, r: number, cells: CellChange[]): string {
-  const cols = d.meta.periods.map((p, i) => (p ? i + 1 : 0)).filter((c) => c > 0);
+  // One frequency only: quarters if the sheet has them, otherwise years.
+  const periods = d.meta.periods.map((p, i) => ({ p, c: i + 1 })).filter((x) => x.p !== null);
+  const quarters = periods.filter((x) => x.p!.quarter > 0);
+  const cols = (quarters.length >= 4 ? quarters : periods.filter((x) => x.p!.quarter === 0)).map((x) => x.c);
   if (cols.length < 4 || cells.length < 2) return "";
   const changed = new Map(cells.map((c) => [c.c, c]));
   const after: (number | null)[] = [];

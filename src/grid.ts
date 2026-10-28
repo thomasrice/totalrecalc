@@ -217,6 +217,7 @@ export class Grid {
     this.sizer.style.width = `${ROW_HEAD_W + this.colX[this.colX.length - 1] + 2}px`;
     this.sizer.style.height = `${this.headH + this.rowY[this.rowY.length - 1] + 2}px`;
     for (const r of Object.values(this.regions)) r.rendered = null;
+    this.forecastCol = this.findForecastCol();
     this.clampSelection();
     this.renderTicks();
   }
@@ -355,16 +356,14 @@ export class Grid {
     place("hdrScroll", ROW_HEAD_W + fw, gh, scrollW, LETTER_H, -fw - sl, 0).cells.innerHTML = this.letterHtml(c0, c1);
     const gf = place("grpFrozen", ROW_HEAD_W, 0, fw, gh, 0, 0);
     const gs = place("grpScroll", ROW_HEAD_W + fw, 0, scrollW, gh, -fw - sl, 0);
-    gf.cells.innerHTML = gh ? this.groupHtml(0, this.frozenC) : "";
-    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) : "";
+    gf.cells.innerHTML = gh ? this.levelSwitchHtml(fw) + this.groupHtml(0, this.frozenC) : "";
+    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) + this.forecastLabelHtml() : "";
 
     // Row numbers.
     place("rowFrozen", 0, hh, ROW_HEAD_W, fh, 0, 0).cells.innerHTML = this.rowNumHtml(0, this.frozenR);
     place("rowScroll", 0, hh + fh, ROW_HEAD_W, scrollH, 0, -fh - st).cells.innerHTML = this.rowNumHtml(r0, r1);
     const box = place("box", 0, 0, ROW_HEAD_W, hh, 0, 0);
-    box.cells.innerHTML = gh
-      ? `<div class="level-switch"><button data-level="quarters" class="${this.collapsed.size ? "" : "on"}" title="Expand every year (])">Q</button><button data-level="years" class="${this.collapsed.size ? "on" : ""}" title="Collapse to years ([)">Y</button></div>`
-      : "";
+    box.cells.innerHTML = gh && fw < 150 ? this.levelSwitchHtml(ROW_HEAD_W, true) : "";
 
     this.el.classList.toggle("has-frozen-cols", this.frozenC > 0);
     this.el.classList.toggle("has-frozen-rows", this.frozenR > 0);
@@ -456,6 +455,10 @@ export class Grid {
         out.push(`<div class="${cls}" style="${st}">${span}</div>`);
       }
     }
+    // The forecast boundary sits above the cells.
+    if (this.forecastCol > c0 && this.forecastCol <= c1) {
+      out.push(`<div class="fc-line" style="left:${this.colX[this.forecastCol] - 1}px;top:${this.rowY[r0]}px;height:${this.rowY[r1] - this.rowY[r0]}px"></div>`);
+    }
     return out.join("");
   }
 
@@ -507,11 +510,43 @@ export class Grid {
       const x = this.colX[lo] + 3;
       const w = this.colX[hi + 1] - this.colX[lo] - 6;
       const hidden = collapsed ? this.hiddenChanges(g) : 0;
+      // Keep the year's label in view while any part of its bracket is.
+      const visibleLeft = this.frozenW + this.viewport.scrollLeft;
+      const shift = lo >= this.frozenC ? Math.max(0, Math.min(visibleLeft - x, w - 70)) : 0;
       out.push(
-        `<div class="grp${collapsed ? " collapsed" : ""}" style="left:${x}px;width:${w}px"><button data-year="${g.year}" title="${collapsed ? "Expand" : "Collapse"} ${g.year}">${collapsed ? "▸" : "▾"} ${g.year}${hidden ? `<span class="grp-badge">${hidden}</span>` : ""}</button></div>`,
+        `<div class="grp${collapsed ? " collapsed" : ""}" style="left:${x}px;width:${w}px"><button data-year="${g.year}" style="${shift && !collapsed ? `left:${shift + 6}px` : ""}" title="${collapsed ? "Expand" : "Collapse"} ${g.year}">${collapsed ? "▸" : "▾"} ${g.year}${hidden ? `<span class="grp-badge">${hidden}</span>` : ""}</button></div>`,
       );
     }
     return out.join("");
+  }
+
+  private forecastCol = -1;
+
+  /** The first estimate column that follows an actual one: where the forecast starts. */
+  private findForecastCol(): number {
+    let sawActual = false;
+    for (let ci = 0; ci < this.viewCols.length; ci++) {
+      const vc = this.viewCols[ci];
+      if (vc.kind !== "sheet") continue;
+      const kind = this.data?.meta.periods[vc.col - 1]?.kind;
+      if (kind === "A") sawActual = true;
+      else if (kind === "E" && sawActual) return ci;
+    }
+    return -1;
+  }
+
+  private forecastLabelHtml(): string {
+    const ci = this.forecastCol;
+    if (ci < 0 || ci < this.frozenC) return "";
+    return `<div class="fc-label" style="left:${this.colX[ci]}px">Forecast</div>`;
+  }
+
+  private levelSwitchHtml(width: number, compact = false): string {
+    const years = this.collapsed.size > 0;
+    if (compact || width < 150) {
+      return `<div class="level-switch compact"><button data-level="quarters" class="${years ? "" : "on"}" title="Show quarters (])">Q</button><button data-level="years" class="${years ? "on" : ""}" title="Collapse to years ([)">Y</button></div>`;
+    }
+    return `<div class="level-switch"><button data-level="quarters" class="${years ? "" : "on"}" title="Show every quarter (])">Quarters</button><button data-level="years" class="${years ? "on" : ""}" title="Collapse to years ([)">Years</button></div>`;
   }
 
   private hiddenChanges(g: YearGroup): number {
@@ -539,6 +574,16 @@ export class Grid {
     col = Math.max(0, Math.min(this.viewCols.length - 1, col));
     this.sel = extend ? { ...this.sel, row2: row, col2: col } : { row, col, row2: row, col2: col };
     this.ensureVisible(extend ? row : this.sel.row, extend ? col : this.sel.col);
+    this.renderSelection();
+    this.renderHeaders();
+    this.events.select(this.sel);
+  }
+
+  /** Set the selection without moving the view unless asked. */
+  setSelection(sel: Selection, reveal: boolean) {
+    this.sel = sel;
+    this.clampSelection();
+    if (reveal) this.ensureVisible(this.sel.row, this.sel.col);
     this.renderSelection();
     this.renderHeaders();
     this.events.select(this.sel);
@@ -590,7 +635,7 @@ export class Grid {
     const v = this.viewport;
     const viewH = v.clientHeight - this.headH - this.frozenH;
     const viewW = v.clientWidth - ROW_HEAD_W - this.frozenW;
-    if (row >= this.frozenR) v.scrollTop = Math.max(0, this.rowY[row] - this.frozenH - viewH / 3);
+    if (row >= this.frozenR) v.scrollTop = this.snapTop(this.rowY[row] - this.frozenH - viewH / 3);
     if (col >= this.frozenC) {
       const left = this.colX[col] - this.frozenW;
       if (left < v.scrollLeft || left + 120 > v.scrollLeft + viewW) v.scrollLeft = Math.max(0, left - viewW / 3);
@@ -612,7 +657,14 @@ export class Grid {
   }
 
   setRowScreenOffset(row: number, offset: number) {
-    if (row >= this.frozenR) this.viewport.scrollTop = Math.max(0, this.rowY[row] - this.frozenH - offset);
+    if (row >= this.frozenR) this.viewport.scrollTop = this.snapTop(this.rowY[row] - this.frozenH - offset);
+  }
+
+  /** A scroll position that starts exactly at a row, so no row is sliced under the frozen header. */
+  private snapTop(y: number): number {
+    if (y <= 0) return 0;
+    const k = lowerBound(this.rowY, y + this.frozenH);
+    return Math.max(0, this.rowY[Math.max(k, this.frozenR)] - this.frozenH);
   }
 
   // ---------------------------------------------------------------- mouse
@@ -705,7 +757,7 @@ export class Grid {
       const ri = this.rowIndex.get(ch.r);
       const ci = this.colIndex.get(ch.c);
       if (ri !== undefined && (!rows.has(ri) || rank(ch.kind) > rank(rows.get(ri)!))) rows.set(ri, ch.kind);
-      if (ci !== undefined && (!cols.has(ci) || rank(ch.kind) > rank(cols.get(ci)!))) cols.set(ci, ch.kind);
+      if (ci !== undefined && ci >= this.frozenC && (!cols.has(ci) || rank(ch.kind) > rank(cols.get(ci)!))) cols.set(ci, ch.kind);
     }
     this.ticksY.innerHTML = [...rows]
       .map(([ri, k]) => `<i class="t-${k}" style="top:${((this.rowY[ri] / totalH) * 100).toFixed(3)}%"></i>`)

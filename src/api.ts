@@ -2,12 +2,23 @@
 // fixtures exported by `cellwake-dump`, so the UI can be developed and
 // photographed without the desktop shell: open `/?fixture=demo`.
 
-import type { BookInfo, Inspection, SheetPayload, SheetSummary, WatchState } from "./types";
+import type { BookInfo, Inspection, SheetDiff, SheetPayload, SheetSummary, WatchState } from "./types";
+
+export interface Opened {
+  /** Events from earlier files carry an older session number and are ignored. */
+  session: number;
+  /** The canonical path: the key for remembered per-file state. */
+  path: string;
+}
 
 export interface Api {
-  openFile(path: string): Promise<void>;
+  openFile(path: string): Promise<Opened>;
   bookInfo(version: number, compare?: number): Promise<BookInfo>;
   sheet(version: number, index: number, compare?: number): Promise<SheetPayload>;
+  /** Only the changes on one sheet between two versions. */
+  sheetChanges(version: number, index: number, compare: number): Promise<SheetDiff | null>;
+  /** Versions the window still needs; they are never evicted. */
+  pinVersions(ids: number[]): Promise<void>;
   inspect(version: number, index: number, r: number, c: number): Promise<Inspection>;
   latestVersion(): Promise<number | null>;
   initialPath(): Promise<string | null>;
@@ -25,11 +36,18 @@ async function tauriApi(): Promise<Api> {
   const { listen } = await import("@tauri-apps/api/event");
   const { getCurrentWebview } = await import("@tauri-apps/api/webview");
   const dialog = await import("@tauri-apps/plugin-dialog");
+  let session = 0;
   return {
     desktop: true,
-    openFile: (path) => invoke("open_file", { path }),
+    async openFile(path) {
+      const opened = await invoke<Opened>("open_file", { path });
+      session = opened.session;
+      return opened;
+    },
     bookInfo: (version, compare) => invoke("book_info", { version, compare: compare ?? null }),
     sheet: (version, index, compare) => invoke("sheet", { version, index, compare: compare ?? null }),
+    sheetChanges: (version, index, compare) => invoke("sheet_changes", { version, index, compare }),
+    pinVersions: (ids) => invoke("pin_versions", { ids }),
     inspect: (version, index, r, c) => invoke("inspect", { version, index, r, c }),
     latestVersion: () => invoke("latest_version"),
     initialPath: () => invoke("initial_path"),
@@ -41,10 +59,14 @@ async function tauriApi(): Promise<Api> {
       return typeof picked === "string" ? picked : null;
     },
     onVersion(cb) {
-      listen<{ id: number; calculated: boolean }>("version", (e) => cb(e.payload.id, e.payload.calculated));
+      listen<{ session: number; id: number; calculated: boolean }>("version", (e) => {
+        if (e.payload.session === session) cb(e.payload.id, e.payload.calculated);
+      });
     },
     onWatch(cb) {
-      listen<WatchState>("watch", (e) => cb(e.payload));
+      listen<{ session: number; watch: WatchState }>("watch", (e) => {
+        if (e.payload.session === session) cb(e.payload.watch);
+      });
     },
     onDrop(cb, onHover) {
       getCurrentWebview().onDragDropEvent((e) => {
@@ -82,6 +104,7 @@ function fixtureApi(name: string): Api {
     desktop: false,
     async openFile() {
       const f = await load();
+      const opened = { session: 1, path: f.info.path };
       const ids = f.info.versions.map((v) => v.id);
       const emit = (id: number) => versionCbs.forEach((cb) => cb(id, true));
       setTimeout(() => {
@@ -90,6 +113,7 @@ function fixtureApi(name: string): Api {
         const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1600);
         if (ids.length > 1) setTimeout(() => emit(ids[ids.length - 1]), delay);
       }, 0);
+      return opened;
     },
     async bookInfo(version, compare) {
       const f = await load();
@@ -112,11 +136,16 @@ function fixtureApi(name: string): Api {
       const s = f.sheets[index];
       return isDiff(f, version, compare) ? s : { ...s, diff: noDiff };
     },
+    async sheetChanges(version, index, compare) {
+      const f = await load();
+      return isDiff(f, version, compare) ? f.sheets[index].diff : null;
+    },
+    async pinVersions() {},
     async inspect() {
       return { inputs: [], usedBy: [] };
     },
     latestVersion: async () => (await load()).info.version,
-    initialPath: async () => name,
+    initialPath: async () => (name === "none" ? null : name),
     pickFile: async () => null,
     onVersion(cb) {
       versionCbs.push(cb);

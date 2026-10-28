@@ -1,5 +1,6 @@
 mod book;
 mod diff;
+mod formula;
 mod load;
 mod package;
 mod periods;
@@ -8,7 +9,7 @@ pub mod session;
 
 use session::{BookInfo, Notice, Session, Shared, SheetPayload};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 
@@ -21,16 +22,32 @@ struct Open {
 
 type AppState = Mutex<Open>;
 
+/// Every opened file gets a session number; events carry it so the window can
+/// ignore anything still arriving from a file it has closed.
+static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+
 fn current(state: &State<AppState>) -> Result<Shared, String> {
     state.lock().unwrap().session.clone().ok_or_else(|| "No file is open".to_string())
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Opened {
+    session: u64,
+    /// The canonical path, the stable key for remembered per-file state.
+    path: String,
+}
+
 #[tauri::command]
-fn open_file(path: String, app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+fn open_file(path: String, app: tauri::AppHandle, state: State<AppState>) -> Result<Opened, String> {
     let path = PathBuf::from(path);
+    if !path.exists() {
+        return Err(format!("{} does not exist", path.display()));
+    }
     let path = std::fs::canonicalize(&path).unwrap_or(path);
     let shared: Shared = Arc::new(Mutex::new(Session::new(path.clone())));
     let stop = Arc::new(AtomicBool::new(false));
+    let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     {
         let mut open = state.lock().unwrap();
         if let Some(old) = open.stop.take() {
@@ -44,43 +61,56 @@ fn open_file(path: String, app: tauri::AppHandle, state: State<AppState>) -> Res
         let _ = w.set_title(&format!("{name} — Cellwake"));
     }
     let handle = app.clone();
-    session::watch(shared, path, stop, move |notice| match notice {
+    session::watch(shared, path.clone(), stop, move |notice| match notice {
         Notice::Version { id, calculated } => {
-            let _ = handle.emit("version", serde_json::json!({ "id": id, "calculated": calculated }));
+            let _ = handle.emit("version", serde_json::json!({ "session": session, "id": id, "calculated": calculated }));
         }
         Notice::Watch(w) => {
-            let _ = handle.emit("watch", w);
+            let _ = handle.emit("watch", serde_json::json!({ "session": session, "watch": w }));
         }
     });
-    Ok(())
+    Ok(Opened { session, path: path.to_string_lossy().into_owned() })
 }
 
 #[tauri::command]
-fn book_info(version: u64, compare: Option<u64>, state: State<AppState>) -> Result<BookInfo, String> {
+async fn book_info(version: u64, compare: Option<u64>, state: State<'_, AppState>) -> Result<BookInfo, String> {
     let shared = current(&state)?;
-    let mut s = shared.lock().unwrap();
-    session::book_info(&mut s, version, compare).ok_or_else(|| "That version is no longer available".to_string())
+    tauri::async_runtime::spawn_blocking(move || session::book_info(&shared, version, compare))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "That version is no longer available".to_string())
 }
 
 #[tauri::command]
-fn sheet(version: u64, index: usize, compare: Option<u64>, state: State<AppState>) -> Result<SheetPayload, String> {
+async fn sheet(version: u64, index: usize, compare: Option<u64>, state: State<'_, AppState>) -> Result<SheetPayload, String> {
     let shared = current(&state)?;
-    let mut s = shared.lock().unwrap();
-    session::sheet_payload(&mut s, version, index, compare).ok_or_else(|| "That sheet is no longer available".to_string())
+    tauri::async_runtime::spawn_blocking(move || session::sheet_payload(&shared, version, index, compare))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "That sheet is no longer available".to_string())
 }
 
 #[tauri::command]
-fn inspect(version: u64, index: usize, r: i32, c: i32, state: State<AppState>) -> Result<refs::Inspection, String> {
+async fn sheet_changes(version: u64, index: usize, compare: u64, state: State<'_, AppState>) -> Result<Option<diff::SheetDiff>, String> {
+    let shared = current(&state)?;
+    tauri::async_runtime::spawn_blocking(move || session::sheet_changes(&shared, version, index, compare))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn inspect(version: u64, index: usize, r: i32, c: i32, state: State<'_, AppState>) -> Result<refs::Inspection, String> {
     let shared = current(&state)?;
     let book = shared.lock().unwrap().version(version).map(|v| v.book.clone()).ok_or("That version is no longer available")?;
-    Ok(refs::inspect(&book, index, r, c))
+    tauri::async_runtime::spawn_blocking(move || refs::inspect(&book, index, r, c)).await.map_err(|e| e.to_string())
 }
 
+/// Versions the window still needs (shown, baseline, undo) are kept however
+/// many newer versions arrive.
 #[tauri::command]
-fn latest_version(state: State<AppState>) -> Option<u64> {
-    let shared = state.lock().unwrap().session.clone()?;
-    let s = shared.lock().unwrap();
-    s.versions.back().map(|v| v.id)
+fn pin_versions(ids: Vec<u64>, state: State<AppState>) -> Result<(), String> {
+    current(&state)?.lock().unwrap().set_pins(&ids);
+    Ok(())
 }
 
 /// The path given on the command line, if any.
@@ -93,7 +123,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![open_file, book_info, sheet, inspect, latest_version, initial_path])
+        .invoke_handler(tauri::generate_handler![open_file, book_info, sheet, sheet_changes, inspect, pin_versions, initial_path])
         .run(tauri::generate_context!())
         .expect("error while running Cellwake");
 }

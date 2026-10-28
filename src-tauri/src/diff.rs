@@ -7,11 +7,10 @@
 //! changed), a *result* (same formula, new value), or *added*.
 
 use crate::book::{Book, Cell, Sheet, Value};
-use regex::Regex;
+use crate::formula;
 use serde::Serialize;
 use similar::{Algorithm, DiffOp, capture_diff_slices};
 use std::collections::HashMap;
-use std::sync::LazyLock;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -219,17 +218,9 @@ fn row_keys(sheet: &Sheet, book: &Book) -> Vec<(i32, String)> {
             .range((r, sheet.meta.label_cols + 1)..(r + 1, 0))
             .any(|(_, c)| matches!(c.value, Value::Number(_)));
         let base = if label.is_empty() {
-            if row_cells.iter().all(|c| !has_content(c)) {
-                "∅".to_string()
-            } else {
-                // An unlabelled row: identify it by its first few texts and formulas.
-                let sig: Vec<String> = row_cells
-                    .iter()
-                    .take(4)
-                    .map(|c| c.formula.clone().unwrap_or_else(|| c.text.clone()))
-                    .collect();
-                format!("~{}", sig.join("|"))
-            }
+            // Unlabelled rows (blank or not) are matched by order within
+            // their section; their values must not change their identity.
+            format!("{section}›∅")
         } else {
             let bold = row_cells.first().map(|c| book.styles.get(c.style as usize).is_some_and(|s| s.bold)).unwrap_or(false);
             if bold && !has_numbers {
@@ -296,63 +287,33 @@ fn align_seq(old: &[(i32, String)], new: &[(i32, String)]) -> (HashMap<i32, i32>
 
 // ------------------------------------------------------- formula comparison
 
-static REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(^|[^A-Za-z0-9_.$!'])((?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!)?(\$?)([A-Z]{1,3})(\$?)([0-9]+)").unwrap()
-});
-
 /// Rewrite the cell references in an old formula through the row and column
 /// alignment, so that a formula that only moved because rows were inserted
-/// above it compares equal to its new text.
+/// above it compares equal to its new text. Both ends of a range belong to
+/// the range's sheet.
 fn remap_formula(formula: &str, own_sheet: &str, alignments: &HashMap<&str, Alignment>) -> String {
-    let mut out = String::with_capacity(formula.len());
-    // Leave string literals alone.
-    for (i, part) in formula.split('"').enumerate() {
-        if i > 0 {
-            out.push('"');
-        }
-        if i % 2 == 1 {
-            out.push_str(part);
-            continue;
-        }
-        let replaced = REFERENCE.replace_all(part, |caps: &regex::Captures| {
-            let whole = caps.get(0).unwrap();
-            // A function name such as LOG10( is not a reference.
-            if part[whole.end()..].starts_with('(') {
-                return whole.as_str().to_string();
-            }
-            let prefix = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            let sheet_name = if prefix.is_empty() {
-                own_sheet.to_string()
-            } else {
-                prefix.trim_end_matches('!').trim_matches('\'').replace("''", "'")
-            };
-            let Some(al) = alignments.get(sheet_name.as_str()) else { return whole.as_str().to_string() };
-            let col = col_number(&caps[4]);
-            let row: i32 = caps[6].parse().unwrap_or(0);
-            let new_row = al.rows.get(&row).copied();
-            let new_col = al.cols.get(&col).copied();
-            match (new_row, new_col) {
-                (Some(nr), Some(nc)) => {
-                    format!("{}{}{}{}{}{}", &caps[1], prefix, &caps[3], col_letters(nc), &caps[5], nr)
-                }
-                _ => format!("{}{}#DELETED", &caps[1], prefix),
-            }
-        });
-        out.push_str(&replaced);
-    }
-    out
-}
-
-fn col_number(letters: &str) -> i32 {
-    letters.chars().fold(0, |acc, ch| acc * 26 + (ch as i32 - 'A' as i32 + 1))
-}
-
-pub fn col_letters(mut col: i32) -> String {
-    let mut s = Vec::new();
-    while col > 0 {
-        let rem = ((col - 1) % 26) as u8;
-        s.push((b'A' + rem) as char);
-        col = (col - 1) / 26;
-    }
-    s.iter().rev().collect()
+    formula::rewrite(formula, |r| {
+        let sheet = r.sheet.as_deref().unwrap_or(own_sheet);
+        let al = alignments.get(sheet)?;
+        let map = |e: formula::End| -> Option<formula::End> {
+            Some(formula::End {
+                col: match e.col {
+                    Some(c) => Some(*al.cols.get(&c)?),
+                    None => None,
+                },
+                row: match e.row {
+                    Some(r) => Some(*al.rows.get(&r)?),
+                    None => None,
+                },
+                ..e
+            })
+        };
+        let from = map(r.from);
+        let to = r.to.map(map);
+        Some(match (from, to) {
+            (Some(f), None) => format!("{}{}", r.prefix, f.text()),
+            (Some(f), Some(Some(t))) => format!("{}{}:{}", r.prefix, f.text(), t.text()),
+            _ => format!("{}#DELETED", r.prefix),
+        })
+    })
 }

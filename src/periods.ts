@@ -16,12 +16,19 @@ export type ViewCol =
   | { kind: "sheet"; col: number; width: number }
   | { kind: "derived"; group: YearGroup; width: number };
 
+/**
+ * Years that can fold: those whose quarters are visible and either complete
+ * (four of them) or summarised by the year's own annual column beside them.
+ * Anything else stays as it is, rather than collapsing to nothing.
+ */
 export function yearGroups(meta: SheetMeta): YearGroup[] {
   const byYear = new Map<number, YearGroup>();
   const order: number[] = [];
+  const hidden = new Set(meta.hiddenCols);
   meta.periods.forEach((p, i) => {
     if (!p) return;
     const col = i + 1;
+    if (hidden.has(col)) return;
     let g = byYear.get(p.year);
     if (!g) {
       g = { year: p.year, quarters: [], annual: null };
@@ -40,7 +47,8 @@ export function yearGroups(meta: SheetMeta): YearGroup[] {
       const hi = Math.max(...g.quarters);
       const adjacent = g.annual !== null && (g.annual === hi + 1 || g.annual === lo - 1);
       return { ...g, annual: adjacent ? g.annual : null };
-    });
+    })
+    .filter((g) => g.annual !== null || new Set(g.quarters.map((c) => meta.periods[c - 1]?.quarter)).size === 4);
 }
 
 export function buildViewCols(meta: SheetMeta, groups: YearGroup[], collapsed: Set<number>): ViewCol[] {
@@ -66,14 +74,18 @@ export function buildViewCols(meta: SheetMeta, groups: YearGroup[], collapsed: S
 
 type RowRule = "sum" | "last" | "blank";
 
-const RATIO = /(margin|growth|per share|\/ ?sh|ratio|rate\b|yield|days|multiple|%|\bx\b|average|avg|price|cover|return on|roe|roic|eps)/i;
-const BALANCE = /(balance|cash and|cash, |end of (period|year)|outstanding|debt|equity|assets|liabilit|inventor|receivable|payable|headcount|employees|shares)/i;
+// Conservative on purpose: a derived figure is shown only when the row is
+// plainly a flow (summed) or plainly a balance on a balance sheet (year end).
+// Anything else is left blank rather than guessed.
+const RATIO = /(margin|growth|per share|\/ ?sh|ratio|\brate\b|yield|days|multiple|%|\bx\b|average|\bavg\b|price|cover|return on|\broe\b|\broic\b|\beps\b|mix|share of|index|count|headcount|employees|outstanding)/i;
+const FLOW = /(revenue|sales|income|profit|loss|ebit|ebitda|cost|expense|opex|capex|capital expenditure|cash flow|free cash|dividend|interest|tax|depreciation|amortisation|amortization|r&d|research|marketing|administrative|g&a|s&m|cogs|gross|operating|bookings|shipments|units|volume|purchases|repayment|issuance|proceeds|payments)/i;
 
-/** How a row should roll up from quarters to a year. Errs towards blank. */
+/** How a row should roll up from quarters to a year. */
 export function rowRule(sheetName: string, label: string, sampleStyle: CellStyle | undefined): RowRule {
-  if (sampleStyle?.percent || RATIO.test(label)) return "blank";
-  if (/balance/i.test(sheetName) || BALANCE.test(label)) return "last";
-  return "sum";
+  if (!label || sampleStyle?.percent || RATIO.test(label)) return "blank";
+  if (/balance/i.test(sheetName)) return "last";
+  if (FLOW.test(label)) return "sum";
+  return "blank";
 }
 
 export function derivedValue(data: SheetData, row: number, g: YearGroup, styles: CellStyle[]): { text: string; rule: RowRule } | null {

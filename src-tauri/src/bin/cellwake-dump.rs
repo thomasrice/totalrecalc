@@ -28,8 +28,7 @@ fn main() {
     }
     let latest = *ids.last().unwrap();
     let compare = (ids.len() == 2).then(|| ids[0]);
-    let mut s = shared.lock().unwrap();
-    let info = session::book_info(&mut s, latest, compare).unwrap();
-    let sheets: Vec<_> = (0..info.sheets.len()).filter_map(|i| session::sheet_payload(&mut s, latest, i, compare)).collect();
+    let info = session::book_info(&shared, latest, compare).unwrap();
+    let sheets: Vec<_> = (0..info.sheets.len()).filter_map(|i| session::sheet_payload(&shared, latest, i, compare)).collect();
     println!("{}", serde_json::json!({ "info": info, "sheets": sheets }));
 }
