@@ -61,6 +61,8 @@ totalrecalc demo/northwind.xlsx &
 uv run --with openpyxl demo/agent.py demo/northwind.xlsx
 ```
 
+On Linux, Total Recalc draws through the GPU. If the window stays blank or exits with "Error 71 (Protocol error)", start it with `WEBKIT_DISABLE_DMABUF_RENDERER=1 totalrecalc model.xlsx`; it works everywhere but is slower on large, high-resolution screens.
+
 ## Keyboard
 
 | Keys | Action |
