@@ -6,6 +6,12 @@
 A fast, read-only viewer for Excel workbooks that refreshes itself the moment the file changes, keeps your place, and shows exactly what the agent edited and what recalculated as a result.</p>
 
 <p align="center">
+  <a href="https://www.totalrecalc.com/"><b>totalrecalc.com</b></a> ·
+  <a href="https://github.com/thomasrice/totalrecalc/releases/latest">Download</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+<p align="center">
   <img src="docs/wake.gif" alt="An agent edits the model twice; Total Recalc follows each update and ripples across the cells that changed" width="100%" />
 </p>
 
@@ -34,6 +40,7 @@ Total Recalc is built for that loop:
 | **Changes panel** | Every change since your baseline, grouped by row, with the period span, the range of moves and a before/after sparkline. Switch between *since baseline* and *latest update*; set a new baseline at any time (with Undo). |
 | **Pause** | Hold the version on screen while you talk about it. Total Recalc keeps watching and tells you how many newer versions are waiting. |
 | **Cell details** | The selected cell's value, previous value, formula (with clickable references), its inputs and everything that uses it. Follow a chain with Enter, come back with Backspace. |
+| **Formula references** | Select a formula and the cells it refers to are outlined in colour, each matching its reference in the formula, as in Excel. |
 | **Faithful rendering** | Number formats, fonts, fills, borders, merged cells, frozen panes, hidden rows and columns, comments and Excel-style text overflow. Light mode looks like Excel; dark mode remaps workbook colours so dark header fills and blue inputs stay legible. |
 | **Honest numbers** | Every version is recalculated by a built-in engine ([IronCalc](https://github.com/ironcalc/IronCalc)). Where the engine cannot evaluate a formula faithfully (it errors, or the formula uses `INDIRECT`, `OFFSET`, `CELL`, `INFO` or another workbook) and the file carries Excel's saved result, that result is shown and marked, and so are the formulas that depend on it. |
 | **Command palette** | `Ctrl+K` for every action, sheet and row label. `Ctrl+G` goes to a cell or label, `Ctrl+F` searches the sheet. |
@@ -86,7 +93,7 @@ Vim keys (`h` `j` `k` `l`, `g`, `G`) work too.
 
 ## How it works
 
-Total Recalc is a [Tauri 2](https://tauri.app) app. The Rust side does the work: it reads the workbook with IronCalc (plus a little direct XML for outline levels and the odd package quirk), recalculates it on a background thread, keeps the last 30 versions in memory, diffs them, and answers the window's requests one sheet at a time. The window is TypeScript with no framework: a virtualised grid that only puts visible cells in the DOM, split into frozen and scrolling panes driven by native scrollbars.
+Total Recalc is a [Tauri 2](https://tauri.app) app. The Rust side does the work: it reads the workbook with IronCalc (plus a little direct XML for indents, cells without values and the odd package quirk), recalculates it on a background thread, keeps the last 30 versions in memory, diffs them, and answers the window's requests one sheet at a time. The window is TypeScript with no framework: a virtualised grid that only puts visible cells in the DOM, split into frozen and scrolling panes driven by native scrollbars.
 
 A version is accepted only once the file's size and timestamp have been stable for half a second and it parses as a complete workbook. If reading fails, the last good version stays on screen and the top bar says what is wrong.
 
@@ -127,4 +134,4 @@ Early, and used daily on Linux. Windows builds come from CI. See [CHANGELOG.md](
 
 ## Licence
 
-[MIT](LICENSE)
+[MIT](LICENSE) © [Thomas Rice](https://www.thomasrice.com/). Free, with no account and no paid tier. Issues and pull requests are welcome.
