@@ -17,7 +17,7 @@ for i, (_, knobs) in enumerate(STEPS[:3], start=1):
     build(knobs).save(f"{sys.argv[1]}/{i}.xlsx")
 PY
 
-cargo run --quiet --release --manifest-path "$here/src-tauri/Cargo.toml" --bin totalrecalc-dump -- \
+cargo run --quiet --release --manifest-path "$here/src-tauri/Cargo.toml" --example totalrecalc-dump -- \
   "$work"/0.xlsx "$work"/1.xlsx "$work"/2.xlsx "$work"/3.xlsx > "$work/demo.json"
 
 # Present the workbook under its repository path, not the temporary one.

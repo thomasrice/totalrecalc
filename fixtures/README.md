@@ -7,7 +7,7 @@ README screenshots are made.
 ```sh
 pnpm dev                       # then open http://localhost:1420/?fixture=demo
 scripts/make-demo-fixture      # rebuild fixtures/demo.json from the demo model
-cargo run --manifest-path src-tauri/Cargo.toml --bin totalrecalc-dump -- v1.xlsx v2.xlsx v3.xlsx > fixtures/mine.json
+cargo run --manifest-path src-tauri/Cargo.toml --example totalrecalc-dump -- v1.xlsx v2.xlsx v3.xlsx > fixtures/mine.json
 ```
 
 A fixture holds every version of one workbook (each file given to
