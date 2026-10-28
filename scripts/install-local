@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Install a locally built Total Recalc for the current user on Linux:
-# the binary in ~/.local/bin, a launcher entry, and "Open with" for .xlsx.
-# Run after `pnpm tauri build` (or `pnpm tauri build --no-bundle`).
+# Build Total Recalc and install it for the current user on Linux: the
+# binary in ~/.local/bin, a launcher entry, and "Open with" for .xlsx.
+#
+# It always builds through `pnpm tauri build`: a plain `cargo build` makes
+# a development binary that loads its pages from the Vite dev server, so it
+# reloads (and forgets its versions) whenever the source changes.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
+(cd "$here" && pnpm tauri build --no-bundle)
 binary="$here/src-tauri/target/release/totalrecalc"
 icon="$here/src-tauri/icons/128x128@2x.png"
 bin_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
 apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
 
-[ -x "$binary" ] || { echo "No build found at $binary; run 'pnpm tauri build' first." >&2; exit 1; }
 
 mkdir -p "$bin_dir" "$apps" "$icons"
 # Copy rather than link, so cleaning or rebuilding never breaks the installed app.

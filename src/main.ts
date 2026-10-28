@@ -610,15 +610,22 @@ export class App {
   // ----------------------------------------------------------- selection
 
   private selectTimer = 0;
+  private selectRaf = 0;
 
   onSelect(_s: Selection) {
     this.inspection = null;
     this.inspecting = "";
-    this.renderPeek();
-    this.renderStatus();
     clearTimeout(this.selectTimer);
     if (this.panel === "inspector") this.selectTimer = window.setTimeout(() => void this.inspect(), 60);
-    else if (this.panel === "changes") this.highlightChangeRow();
+    // The strip above the grid, the status bar and the panel's current row
+    // follow the selection once per frame, however fast it moves.
+    if (this.selectRaf) return;
+    this.selectRaf = requestAnimationFrame(() => {
+      this.selectRaf = 0;
+      this.renderPeek();
+      this.renderStatus();
+      if (this.panel === "changes") this.highlightChangeRow();
+    });
   }
 
   async inspect() {

@@ -5,6 +5,20 @@ import { $ } from "./dom";
 import { closeOverlays, showHelp } from "./overlays";
 import { openPalette } from "./palette";
 
+// A held arrow key can repeat faster than a slow webview draws; moving at
+// most once per frame stops repeats piling up and running on after release.
+let movedThisFrame = false;
+
+function skipRepeat(e: KeyboardEvent): boolean {
+  return e.repeat && movedThisFrame;
+}
+
+function noteMove() {
+  if (movedThisFrame) return;
+  movedThisFrame = true;
+  requestAnimationFrame(() => (movedThisFrame = false));
+}
+
 export function handleKey(app: App, e: KeyboardEvent) {
   const target = e.target as HTMLElement;
   if (target.closest("input, textarea")) {
@@ -30,6 +44,8 @@ export function handleKey(app: App, e: KeyboardEvent) {
   const ctrl = e.ctrlKey || e.metaKey;
   const move = (dr: number, dc: number) => {
     e.preventDefault();
+    if (skipRepeat(e)) return;
+    noteMove();
     app.grid.select((e.shiftKey ? s.row2 : s.row) + dr, (e.shiftKey ? s.col2 : s.col) + dc, e.shiftKey);
   };
   const edge = (dr: number, dc: number) => {
