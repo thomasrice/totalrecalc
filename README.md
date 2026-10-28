@@ -50,7 +50,7 @@ Total Recalc is built for that loop:
 
 ## Try it
 
-Download a build from [Releases](../../releases) (a portable `totalrecalc.exe` for Windows, or a `.deb` / `.AppImage` for Linux; macOS is untested), then open a workbook:
+Download the latest build from the [releases page](https://github.com/thomasrice/totalrecalc/releases/latest): an installer or a portable `.exe` for Windows, or an `.AppImage` or `.deb` for Linux (macOS is untested). Then open a workbook:
 
 ```sh
 totalrecalc path/to/model.xlsx

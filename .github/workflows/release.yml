@@ -1,19 +1,28 @@
 name: Release
 
-# Push a tag such as v0.1.0 to build Linux and Windows packages and attach
-# them to a draft GitHub release.
+# Push a tag such as v0.1.0 to build Linux and Windows packages, attach them
+# to a GitHub release under both their versioned names and stable names (so
+# https://github.com/thomasrice/totalrecalc/releases/latest/download/<name>
+# always works), add checksums, and publish once everything is uploaded.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v0.1.0"
+        required: true
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
 jobs:
   build:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: ubuntu-22.04
@@ -21,6 +30,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Check the tag matches the app version
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match tauri.conf.json version $version" >&2
+            exit 1
+          fi
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -42,13 +61,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Total Recalc ${{ github.ref_name }}
+          tagName: ${{ env.TAG }}
+          releaseName: Total Recalc ${{ env.TAG }}
           releaseDraft: true
           prerelease: false
-      - name: Portable Windows executable
+      - name: Upload stable names (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p stable
+          cp src-tauri/target/release/bundle/deb/*.deb stable/totalrecalc-linux-amd64.deb
+          cp src-tauri/target/release/bundle/appimage/*.AppImage stable/totalrecalc-linux-amd64.AppImage
+          gh release upload "$TAG" stable/* --clobber
+      - name: Upload stable names (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: totalrecalc-windows-portable
-          path: src-tauri/target/release/totalrecalc.exe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p stable
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe stable/totalrecalc-windows-x64-setup.exe
+          cp src-tauri/target/release/totalrecalc.exe stable/totalrecalc.exe
+          gh release upload "$TAG" stable/* --clobber
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checksums, then publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$TAG"
+          sha256sum * > SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          gh release edit "$TAG" --draft=false --latest
