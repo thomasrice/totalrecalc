@@ -27,7 +27,7 @@ type AppState = Mutex<Open>;
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
 fn current(state: &State<AppState>) -> Result<Shared, String> {
-    state.lock().unwrap().session.clone().ok_or_else(|| "No file is open".to_string())
+    state.lock().unwrap_or_else(|p| p.into_inner()).session.clone().ok_or_else(|| "No file is open".to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -49,7 +49,7 @@ fn open_file(path: String, app: tauri::AppHandle, state: State<AppState>) -> Res
     let stop = Arc::new(AtomicBool::new(false));
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     {
-        let mut open = state.lock().unwrap();
+        let mut open = state.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(old) = open.stop.take() {
             old.store(true, Ordering::Relaxed);
         }
@@ -99,7 +99,7 @@ async fn sheet_changes(version: u64, index: usize, compare: u64, state: State<'_
 #[tauri::command]
 async fn inspect(version: u64, index: usize, r: i32, c: i32, state: State<'_, AppState>) -> Result<refs::Inspection, String> {
     let shared = current(&state)?;
-    let book = shared.lock().unwrap().version(version).map(|v| v.book.clone()).ok_or("That version is no longer available")?;
+    let book = session::lock(&shared).version(version).map(|v| v.book.clone()).ok_or("That version is no longer available")?;
     tauri::async_runtime::spawn_blocking(move || refs::inspect(&book, index, r, c)).await.map_err(|e| e.to_string())
 }
 
@@ -107,7 +107,7 @@ async fn inspect(version: u64, index: usize, r: i32, c: i32, state: State<'_, Ap
 /// many newer versions arrive.
 #[tauri::command]
 fn pin_versions(ids: Vec<u64>, state: State<AppState>) -> Result<(), String> {
-    current(&state)?.lock().unwrap().set_pins(&ids);
+    session::lock(&current(&state)?).set_pins(&ids);
     Ok(())
 }
 

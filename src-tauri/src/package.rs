@@ -1,16 +1,14 @@
 //! Details read straight from the .xlsx package that the calculation engine
-//! does not keep: row and column outline levels, and cell indentation.
+//! does not keep: cell indentation, and cells written without a value.
 
 use anyhow::Result;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
 #[derive(Default, Debug, Clone)]
 pub struct SheetExtras {
-    pub cols: BTreeMap<i32, u8>,
-    pub rows: BTreeMap<i32, u8>,
     /// Cells written as `<c t="n"></c>`: no value and no formula. Excel shows
     /// them blank; IronCalc reads them as 0.
     pub valueless: HashSet<(i32, i32)>,
@@ -126,6 +124,7 @@ fn read_sheets(xml: &[u8]) -> Vec<(String, String)> {
 }
 
 fn read_sheet(xml: &[u8]) -> SheetExtras {
+    // Malformed XML ends the scan early; the engine reports real damage.
     let mut reader = Reader::from_reader(xml);
     let mut buf = Vec::new();
     let mut out = SheetExtras::default();
@@ -140,19 +139,14 @@ fn read_sheet(xml: &[u8]) -> SheetExtras {
                         *has = true;
                     }
                 }
-                "row" => outline_row(&e, &mut out),
                 _ => {}
             },
-            Ok(Event::Empty(e)) => match e.local_name().as_ref() {
-                "col" => outline_col(&e, &mut out),
-                "row" => outline_row(&e, &mut out),
-                "f" => {
-                    if let Some((_, has)) = open_cell.as_mut() {
-                        *has = true;
-                    }
+            // A self-closing <f/> (shared formula) also means the cell has content.
+            Ok(Event::Empty(e)) if e.local_name().as_ref() == "f" => {
+                if let Some((_, has)) = open_cell.as_mut() {
+                    *has = true;
                 }
-                _ => {}
-            },
+            }
             Ok(Event::End(e)) if e.local_name().as_ref() == "c" => {
                 if let Some((rc, false)) = open_cell.take() {
                     out.valueless.insert(rc);
@@ -164,22 +158,4 @@ fn read_sheet(xml: &[u8]) -> SheetExtras {
         buf.clear();
     }
     out
-}
-
-fn outline_col(e: &BytesStart, out: &mut SheetExtras) {
-    if let Some(level) = attr(e, "outlineLevel").and_then(|v| v.parse::<u8>().ok()).filter(|l| *l > 0) {
-        let min: i32 = attr(e, "min").and_then(|v| v.parse().ok()).unwrap_or(0);
-        let max: i32 = attr(e, "max").and_then(|v| v.parse().ok()).unwrap_or(min);
-        for c in min..=max.min(crate::formula::MAX_COL) {
-            out.cols.insert(c, level);
-        }
-    }
-}
-
-fn outline_row(e: &BytesStart, out: &mut SheetExtras) {
-    if let Some(level) = attr(e, "outlineLevel").and_then(|v| v.parse::<u8>().ok()).filter(|l| *l > 0)
-        && let Some(r) = attr(e, "r").and_then(|v| v.parse().ok())
-    {
-        out.rows.insert(r, level);
-    }
 }

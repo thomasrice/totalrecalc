@@ -27,7 +27,6 @@
   --wake: linear-gradient(90deg, #22d3ee, #6366f1 55%, #c026d3);
   --wake-pulse: rgba(255, 190, 70, 0.38);
   --wake-pulse-violet: rgba(124, 77, 219, 0.22);
-  --radius: 8px;
   --font: "Total Recalc Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
@@ -411,11 +410,15 @@ button.primary:hover {
 .fref.other {
   color: var(--green);
 }
-.fref[role="button"] {
+button.fref {
+  font: inherit;
+  color: inherit;
   cursor: pointer;
   border-radius: 3px;
+  padding: 0;
 }
-.fref[role="button"]:hover {
+button.fref:hover,
+button.fref:focus-visible {
   background: var(--accent-soft);
 }
 

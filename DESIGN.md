@@ -63,12 +63,11 @@ Everything else (looking like a well-made financial model, fast navigation, form
 
 ## Period groups (collapsible quarters)
 
-Grouping comes from the column headers, not only from the workbook's outline levels. Many generated models carry no outline levels at all.
+Grouping comes from the column headers. Many generated models carry no outline levels at all, so the workbook's own outline groups are not used.
 
 - Headers that parse as periods (`1Q25A`, `FY2025E`, `Q1 2025`, `2025`) are grouped by year. A year with four quarters gets a group; its annual column, when present, is its summary column.
 - The group bar above the headers shows each year as a bracket with a `▾`/`▸` toggle. A level control at its left shows *Quarters* / *Years*, collapsing every year at once (`[` and `]`).
 - When a collapsed year has no annual column in the workbook, the app shows a **derived annual column**, visibly marked as derived (italic header, `Σ`). Flows sum the four quarters; balance-sheet lines take 4Q; ratios, per-share and rate lines are left blank rather than guessed. Rows the app cannot classify stay blank.
-- Workbook outline groups, where present, are honoured as well.
 - A collapsed group shows a count badge if it hides changes. Jumping to a hidden change opens the group temporarily and offers to restore it.
 
 ## Changes

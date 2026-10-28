@@ -73,7 +73,7 @@ export class App {
     // squeezes word spaces; styles.css compensates under this class.
     const ua = navigator.userAgent;
     if (/Linux/.test(ua) && /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) document.documentElement.classList.add("webkitgtk");
-    this.theme = (localStorage.getItem("totalrecalc.theme") as Theme) || "light";
+    this.theme = localStorage.getItem("totalrecalc.theme") === "dark" ? "dark" : "light";
     this.renderShell();
     this.applyTheme();
     this.api = await createApi();
@@ -144,7 +144,8 @@ export class App {
 
   memory(): FileMemory {
     try {
-      return JSON.parse(localStorage.getItem(`totalrecalc.file:${this.path}`) ?? "{}");
+      const parsed: unknown = JSON.parse(localStorage.getItem(`totalrecalc.file:${this.path}`) ?? "{}");
+      return parsed && typeof parsed === "object" ? (parsed as FileMemory) : {};
     } catch {
       return {};
     }
@@ -687,7 +688,7 @@ export class App {
       </div>
       <footer id="status"></footer>
       <div id="start"></div>
-      <div id="toasts"></div>
+      <div id="toasts" role="status" aria-live="polite"></div>
       <div id="tooltip"></div>
       <div id="overlay"></div>`;
     $("#gridwrap").prepend(this.grid.el);
@@ -913,7 +914,7 @@ export class App {
     if (ver) return this.setBaseline(Number(ver));
     if (t.closest("[data-act=report]")) return void this.copyChangeReport();
     if (t.closest("[data-act=back]")) return void this.back();
-    const ref = t.closest<HTMLElement>(".ref, .fref[data-r]");
+    const ref = t.closest<HTMLElement>(".ref, button.fref");
     if (ref) return void this.jumpTo(Number(ref.dataset.sheet ?? this.sheetIndex), Number(ref.dataset.r), Number(ref.dataset.c));
     const sheetRow = t.closest<HTMLElement>("[data-sheet]");
     if (sheetRow?.classList.contains("sheetrow")) return void this.switchSheet(Number(sheetRow.dataset.sheet));

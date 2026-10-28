@@ -129,9 +129,6 @@ pub struct SheetMeta {
     pub hidden_rows: Vec<i32>,
     /// `[first_row, first_col, last_row, last_col]`
     pub merges: Vec<[i32; 4]>,
-    /// Outline levels from the file, by column / row number.
-    pub col_outline: BTreeMap<i32, u8>,
-    pub row_outline: BTreeMap<i32, u8>,
     /// The row whose cells name the periods, if one was found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub header_row: Option<i32>,

@@ -18,7 +18,7 @@ export function openPalette(app: App, mode: "all" | "go" | "find" = "all") {
   const o = $("#overlay");
   o.className = "on modal-host";
   const placeholder = mode === "go" ? "Go to a cell (B12) or a row label…" : mode === "find" ? "Find on this sheet…" : "Type a command, sheet or row label…";
-  o.innerHTML = `<div class="modal palette"><input id="pal-in" placeholder="${placeholder}" autocomplete="off" spellcheck="false" /><div id="pal-list"></div><div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>Esc</kbd> close</span></div></div>`;
+  o.innerHTML = `<div class="modal palette" role="dialog" aria-modal="true" aria-label="Command palette"><input id="pal-in" aria-label="${placeholder}" placeholder="${placeholder}" autocomplete="off" spellcheck="false" /><div id="pal-list"></div><div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>Esc</kbd> close</span></div></div>`;
   const input = $<HTMLInputElement>("#pal-in");
   const list = $("#pal-list");
   let items: PaletteItem[] = [];

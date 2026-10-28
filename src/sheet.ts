@@ -25,8 +25,6 @@ export class SheetData {
   private cells = new Map<number, Cell>();
   private changes = new Map<number, CellChange>();
   private labels = new Map<number, string>();
-  /** Rows (in reading order) that contain changes. */
-  readonly changedRows: number[];
 
   constructor(p: SheetPayload) {
     this.meta = p.meta;
@@ -35,7 +33,6 @@ export class SheetData {
       this.cells.set(cellKey(r, c), { r, c, text, value, style, error: (flags & 1) === 1, calc: flags >> 1, formula, formatColor, comment });
     }
     for (const ch of p.diff.changes) this.changes.set(cellKey(ch.r, ch.c), ch);
-    this.changedRows = [...new Set(p.diff.changes.map((c) => c.r))].sort((a, b) => a - b);
   }
 
   cell(r: number, c: number): Cell | undefined {

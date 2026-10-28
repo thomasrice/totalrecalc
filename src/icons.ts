@@ -1,6 +1,6 @@
 // Inline stroke icons (24px grid, drawn at 16px).
 
-const paths: Record<string, string> = {
+const paths = {
   open: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   pause: '<rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/>',
   play: '<path d="M8 5.5v13l10.5-6.5z"/>',
@@ -21,8 +21,8 @@ const paths: Record<string, string> = {
   chevron: '<path d="m9 6 6 6-6 6"/>',
   back: '<path d="M10 6 4 12l6 6M4 12h16"/>',
   sparkle: '<path d="M12 3.5 13.8 9 19.5 10.5 13.8 12 12 17.5 10.2 12 4.5 10.5 10.2 9z"/><path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
-};
+} as const;
 
-export function icon(name: keyof typeof paths | string): string {
-  return `<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? ""}</svg>`;
+export function icon(name: keyof typeof paths): string {
+  return `<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 }

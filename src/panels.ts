@@ -190,25 +190,33 @@ export function sparkline(d: SheetData, r: number, cells: CellChange[]): string 
 }
 
 export function formulaHtml(f: string, sheets?: { names: string[]; current: number }): string {
-  const re = /((?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!)?(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?)/g;
-  let out = "";
-  let last = 0;
-  for (const m of f.matchAll(re)) {
-    const i = m.index ?? 0;
-    const prev = f[i - 1] ?? "";
-    if (/[A-Za-z0-9_.]/.test(prev) || f[i + m[0].length] === "(") continue;
-    out += esc(f.slice(last, i));
-    const sheet = m[1] ? m[1].slice(0, -1).replace(/^'|'$/g, "").replace(/''/g, "'") : "";
-    const idx = sheets ? (sheet ? sheets.names.indexOf(sheet) : sheets.current) : -1;
-    const cls = sheet && idx !== sheets?.current ? "fref other" : "fref";
-    const ref = /^\$?([A-Z]{1,3})\$?(\d+)/.exec(m[2]);
-    const target =
-      idx >= 0 && ref
-        ? ` data-sheet="${idx}" data-r="${ref[2]}" data-c="${colNumber(ref[1])}" role="button"`
-        : "";
-    out += `<span class="${cls}"${target}>${esc(m[0])}</span>`;
-    last = i + m[0].length;
-  }
-  return out + esc(f.slice(last));
+  // Sheet-qualified or not; a cell, a range, a whole-column (A:C) or whole-row (3:5) range.
+  const re = /((?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!)?(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}|\$?\d+:\$?\d+)/g;
+  // String literals are left alone: split on quotes and only scan the code between them.
+  return f
+    .split('"')
+    .map((part, i) => {
+      if (i % 2 === 1) return esc(part);
+      let out = "";
+      let last = 0;
+      for (const m of part.matchAll(re)) {
+        const at = m.index ?? 0;
+        const before = part[at - 1] ?? "";
+        const after = part[at + m[0].length] ?? "";
+        if (/[A-Za-z0-9_.$]/.test(before) || /[A-Za-z0-9_(]/.test(after)) continue;
+        out += esc(part.slice(last, at));
+        const sheet = m[1] ? m[1].slice(0, -1).replace(/^'|'$/g, "").replace(/''/g, "'") : "";
+        const idx = sheets ? (sheet ? sheets.names.indexOf(sheet) : sheets.current) : -1;
+        const cls = sheet && idx !== sheets?.current ? "fref other" : "fref";
+        const cellRef = /^\$?([A-Z]{1,3})\$?(\d+)/.exec(m[2]);
+        out +=
+          idx >= 0 && cellRef
+            ? `<button type="button" class="${cls}" data-sheet="${idx}" data-r="${cellRef[2]}" data-c="${colNumber(cellRef[1])}" title="Go to ${esc(m[0])}">${esc(m[0])}</button>`
+            : `<span class="${cls}">${esc(m[0])}</span>`;
+        last = at + m[0].length;
+      }
+      return out + esc(part.slice(last));
+    })
+    .join('"');
 }
 

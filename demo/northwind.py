@@ -91,7 +91,6 @@ def prev_quarter(p: Period) -> Period | None:
 UNITS = {2024: [3.10, 3.42, 3.71, 4.25], 2025: [4.02, 4.38, 4.61, 5.20]}
 ASP = {2024: [41.0, 41.6, 42.1, 42.4], 2025: [43.0, 43.3, 43.9, 44.6]}
 GM = {2024: [0.402, 0.411, 0.418, 0.426], 2025: [0.431, 0.437, 0.444, 0.452]}
-SEASONAL = [0.95, 1.0, 1.02, 1.12]
 
 
 class Sheet:
@@ -164,8 +163,6 @@ class Sheet:
         self.row += 1
         return r
 
-    def blank(self) -> None:
-        self.row += 1
 
 
 def ref(sheet: str, col: int, row: int) -> str:
@@ -257,7 +254,7 @@ def build(k: Knobs) -> Workbook:
     gp = i.line("Gross profit", "USDm", lambda p: f"={L(COL[(p.year, p.q)])}{rev_row}+{L(COL[(p.year, p.q)])}{cogs}", total=True)
     i.line("Gross margin", "%", lambda p: f"={L(COL[(p.year, p.q)])}{gp}/{L(COL[(p.year, p.q)])}{rev_row}", fmt=PCT, memo=True, annual=lambda p: f"={L(COL[(p.year, 0)])}{gp}/{L(COL[(p.year, 0)])}{rev_row}")
     r1 = i.line("Research & development", "USDm", lambda p: f"=-{L(COL[(p.year, p.q)])}{rev_row}*{A(p, rd)}", indent=1)
-    r2 = i.line("Sales & marketing", "USDm", lambda p: f"=-{L(COL[(p.year, p.q)])}{rev_row}*{A(p, sm)}", indent=1)
+    i.line("Sales & marketing", "USDm", lambda p: f"=-{L(COL[(p.year, p.q)])}{rev_row}*{A(p, sm)}", indent=1)
     r3 = i.line("General & administrative", "USDm", lambda p: f"=-{L(COL[(p.year, p.q)])}{rev_row}*{A(p, ga)}", indent=1)
     ebit = i.line("Operating income", "USDm", lambda p: f"={L(COL[(p.year, p.q)])}{gp}+SUM({L(COL[(p.year, p.q)])}{r1}:{L(COL[(p.year, p.q)])}{r3})", total=True)
     i.line("Operating margin", "%", lambda p: f"={L(COL[(p.year, p.q)])}{ebit}/{L(COL[(p.year, p.q)])}{rev_row}", fmt=PCT, memo=True, annual=lambda p: f"={L(COL[(p.year, 0)])}{ebit}/{L(COL[(p.year, 0)])}{rev_row}")

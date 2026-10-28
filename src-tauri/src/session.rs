@@ -65,6 +65,12 @@ pub struct Session {
 
 pub type Shared = Arc<Mutex<Session>>;
 
+/// Lock the session. A panic elsewhere cannot leave the session unusable:
+/// its data is replaced only whole, so a poisoned lock is still consistent.
+pub fn lock(shared: &Shared) -> std::sync::MutexGuard<'_, Session> {
+    shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Something the session tells the window.
 pub enum Notice {
     Version { id: u64, calculated: bool },
@@ -115,14 +121,14 @@ pub fn diff_between(shared: &Shared, from: u64, to: u64) -> Option<Arc<Diff>> {
         return None;
     }
     let (a, b) = {
-        let s = shared.lock().unwrap();
+        let s = lock(shared);
         if let Some((_, d)) = s.diffs.iter().find(|(k, _)| *k == (from, to)) {
             return Some(d.clone());
         }
         (s.version(from)?.book.clone(), s.version(to)?.book.clone())
     };
     let d = Arc::new(diff::diff(&a, &b));
-    let mut s = shared.lock().unwrap();
+    let mut s = lock(shared);
     s.diffs.push_back(((from, to), d.clone()));
     while s.diffs.len() > KEEP_DIFFS {
         s.diffs.pop_front();
@@ -187,7 +193,7 @@ pub struct SheetPayload {
 pub fn book_info(shared: &Shared, version: u64, compare: Option<u64>) -> Option<BookInfo> {
     let compare = compare.filter(|c| *c != version);
     let d = compare.and_then(|c| diff_between(shared, c, version));
-    let s = shared.lock().unwrap();
+    let s = lock(shared);
     let book = s.version(version)?.book.clone();
     let path = s.path.clone();
     let sd = |name: &str| d.as_ref().and_then(|d| d.sheets.get(name));
@@ -228,7 +234,7 @@ pub fn book_info(shared: &Shared, version: u64, compare: Option<u64>) -> Option<
 }
 
 pub fn sheet_payload(shared: &Shared, version: u64, sheet: usize, compare: Option<u64>) -> Option<SheetPayload> {
-    let book = shared.lock().unwrap().version(version)?.book.clone();
+    let book = lock(shared).version(version)?.book.clone();
     let s = book.sheets.get(sheet)?;
     let diff = compare
         .filter(|c| *c != version)
@@ -240,7 +246,7 @@ pub fn sheet_payload(shared: &Shared, version: u64, sheet: usize, compare: Optio
 
 /// Only the changes between two versions of one sheet (for the update ripple).
 pub fn sheet_changes(shared: &Shared, version: u64, sheet: usize, compare: u64) -> Option<SheetDiff> {
-    let name = shared.lock().unwrap().version(version)?.book.sheets.get(sheet)?.meta.name.clone();
+    let name = lock(shared).version(version)?.book.sheets.get(sheet)?.meta.name.clone();
     diff_between(shared, compare, version)?.sheets.get(&name).cloned()
 }
 
@@ -296,8 +302,8 @@ fn ingest(shared: &Shared, bytes: &[u8], notify: &dyn Fn(Notice)) -> Result<(), 
     zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "The file is not a complete workbook yet".to_string())?;
     let mut loaded = load::parse(bytes).map_err(|e| format!("Not a readable workbook: {e}"))?;
     let cached = load::snapshot(&loaded, None);
-    let first = shared.lock().unwrap().versions.is_empty();
-    let provisional = first.then(|| shared.lock().unwrap().push(cached.clone()));
+    let first = lock(shared).versions.is_empty();
+    let provisional = first.then(|| lock(shared).push(cached.clone()));
     set_watch(shared, notify, WatchState::new("calculating"));
     if let Some(id) = provisional {
         notify(Notice::Version { id, calculated: false });
@@ -305,7 +311,7 @@ fn ingest(shared: &Shared, bytes: &[u8], notify: &dyn Fn(Notice)) -> Result<(), 
     loaded.model.evaluate();
     let calculated = load::snapshot(&loaded, Some(&cached));
     let id = {
-        let mut s = shared.lock().unwrap();
+        let mut s = lock(shared);
         match provisional {
             Some(id) => {
                 s.finish_first(id, calculated);
@@ -385,7 +391,14 @@ pub fn watch(shared: Shared, path: PathBuf, stop: Arc<AtomicBool>, notify: impl 
                 Some(Err(e)) => Err(format!("Cannot read the file: {e}")),
                 Some(Ok(bytes)) => {
                     let h = hash(&bytes);
-                    if Some(h) == last_hash { Ok(h) } else { ingest(&shared, &bytes, &notify).map(|_| h) }
+                    if Some(h) == last_hash {
+                        Ok(h)
+                    } else {
+                        // A workbook that makes the engine panic must not stop the watcher.
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ingest(&shared, &bytes, &notify)))
+                            .unwrap_or_else(|_| Err("The calculation engine failed on this workbook".to_string()))
+                            .map(|_| h)
+                    }
                 }
             };
             if stop.load(Ordering::Relaxed) {
@@ -401,7 +414,7 @@ pub fn watch(shared: Shared, path: PathBuf, stop: Arc<AtomicBool>, notify: impl 
                 Err(message) => {
                     let started = *failing_since.get_or_insert_with(Instant::now);
                     let wall = *failing_wall.get_or_insert_with(now_ms);
-                    let has_version = !shared.lock().unwrap().versions.is_empty();
+                    let has_version = !lock(&shared).versions.is_empty();
                     if started.elapsed() >= REPORT_FAILURE_AFTER || !has_version {
                         set_watch(&shared, &notify, WatchState { state: "error".into(), message: Some(message), since: Some(wall) });
                     } else {
@@ -415,7 +428,7 @@ pub fn watch(shared: Shared, path: PathBuf, stop: Arc<AtomicBool>, notify: impl 
 
 fn set_watch(shared: &Shared, notify: &dyn Fn(Notice), w: WatchState) {
     {
-        let mut s = shared.lock().unwrap();
+        let mut s = lock(shared);
         if s.watch == w {
             return;
         }
@@ -426,8 +439,8 @@ fn set_watch(shared: &Shared, notify: &dyn Fn(Notice), w: WatchState) {
 
 /// Load a file once, synchronously, fully calculated (for `totalrecalc-dump`).
 pub fn load_once(shared: &Shared, path: &Path) -> Result<u64, String> {
-    shared.lock().unwrap().path = path.to_path_buf();
+    lock(shared).path = path.to_path_buf();
     let bytes = std::fs::read(path).map_err(|e| format!("Cannot read the file: {e}"))?;
     ingest(shared, &bytes, &|_| {})?;
-    Ok(shared.lock().unwrap().versions.back().map(|v| v.id).unwrap_or(0))
+    Ok(lock(shared).versions.back().map(|v| v.id).unwrap_or(0))
 }

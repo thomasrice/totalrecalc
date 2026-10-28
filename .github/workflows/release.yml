@@ -65,7 +65,7 @@ jobs:
           tagName: ${{ env.TAG }}
           releaseName: Total Recalc ${{ env.TAG }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(env.TAG, '-') }}
       - name: Upload stable names (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -98,6 +98,12 @@ jobs:
         run: |
           mkdir assets && cd assets
           gh release download "$TAG"
+          rm -f SHA256SUMS.txt
           sha256sum * > SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt --clobber
-          gh release edit "$TAG" --draft=false --latest
+          # Pre-release tags (v0.2.0-beta.1) never become "latest".
+          if [[ "$TAG" == *-* ]]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi

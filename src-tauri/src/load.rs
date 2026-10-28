@@ -187,8 +187,6 @@ pub fn snapshot(loaded: &Loaded, cached: Option<&Book>) -> Book {
             row_heights,
             hidden_rows,
             merges,
-            col_outline: extra.map(|o| o.cols.clone()).unwrap_or_default(),
-            row_outline: extra.map(|o| o.rows.clone()).unwrap_or_default(),
             ..Default::default()
         };
         let mut sheet = Sheet { meta: SheetMeta::default(), cells };

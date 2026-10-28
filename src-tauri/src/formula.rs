@@ -112,6 +112,11 @@ pub fn references(formula: &str) -> Vec<Reference> {
                 } else {
                     (end(&caps["ra"]), Some(end(&caps["rb"])))
                 };
+                // Outside Excel's grid (e.g. ZZZZ1): a name or text, not a reference.
+                let in_grid = |e: &End| e.col.is_none_or(|c| c <= MAX_COL) && e.row.is_none_or(|r| (1..=MAX_ROW).contains(&r));
+                if !in_grid(&from) || to.as_ref().is_some_and(|t| !in_grid(t)) {
+                    continue;
+                }
                 out.push(Reference { start: offset + start, end: offset + whole.end(), sheet, prefix, from, to });
             }
         }
@@ -136,8 +141,9 @@ pub fn rewrite(formula: &str, mut f: impl FnMut(&Reference) -> Option<String>) -
     out
 }
 
+/// "AB" → 28. Saturates rather than overflowing on absurd input.
 pub fn col_number(letters: &str) -> i32 {
-    letters.chars().fold(0, |acc, ch| acc * 26 + (ch.to_ascii_uppercase() as i32 - 'A' as i32 + 1))
+    letters.chars().fold(0i32, |acc, ch| acc.saturating_mul(26).saturating_add(ch.to_ascii_uppercase() as i32 - 'A' as i32 + 1))
 }
 
 pub fn col_letters(mut col: i32) -> String {

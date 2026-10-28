@@ -11,7 +11,7 @@ static QUARTER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(?:([1-4])q\s*(?:fy|cy)?'?(\d{2}|\d{4})|q([1-4])[\s\-']*(?:fy|cy)?'?(\d{2}|\d{4}))\s*([aef])?$").unwrap()
 });
 static YEAR: LazyLock<Regex> = LazyLock::new(|| {
-    // FY2025, FY25E, CY2025, 2025, 2025A, 2025E, FY Dec-25
+    // FY2025, FY25E, CY2025, 2025, 2025A, 2025E
     Regex::new(r"(?i)^(?:(?:fy|cy)\s*'?(\d{2}|\d{4})|(\d{4}))\s*([aef])?$").unwrap()
 });
 

@@ -184,7 +184,10 @@ export class Grid {
     this.covered.clear();
     for (const m of data.meta.merges) {
       this.merges.set(cellKey(m[0], m[1]), m);
-      for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) if (r !== m[0] || c !== m[1]) this.covered.add(cellKey(r, c));
+      // Rows are clipped to the sheet's extent, so even a whole-column merge stays small.
+      const lastRow = Math.min(m[2], data.meta.maxRow);
+      const lastCol = Math.min(m[3], data.meta.maxCol);
+      for (let r = m[0]; r <= lastRow; r++) for (let c = m[1]; c <= lastCol; c++) if (r !== m[0] || c !== m[1]) this.covered.add(cellKey(r, c));
     }
     this.layout();
     this.schedule(true);
@@ -428,7 +431,6 @@ export class Grid {
         if (cell && cell.calc === 1) cls += " cached";
         if (cell && cell.calc === 2) cls += " unavail";
         if (cell?.comment) cls += " has-comment";
-        if (style?.fill) cls += " filled";
         if (ch) cls += ` k-${ch.kind}`;
         const delay = this.pulses.get(k);
         if (delay !== undefined && now < this.pulseUntil) cls += " pulse";

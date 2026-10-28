@@ -48,7 +48,7 @@ export function showHelp(app: App) {
     ["T", "Light or dark"],
     ["? · Esc", "This help · close"],
   ];
-  o.innerHTML = `<div class="modal help"><h2>Keyboard</h2>${rows.map(([k, v]) => `<div class="kv"><kbd>${k}</kbd><span>${v}</span></div>`).join("")}<p class="muted small">Vim keys (h j k l, g, G) work too.</p></div>`;
+  o.innerHTML = `<div class="modal help" role="dialog" aria-modal="true" aria-labelledby="help-title"><h2 id="help-title">Keyboard</h2>${rows.map(([k, v]) => `<div class="kv"><kbd>${k}</kbd><span>${v}</span></div>`).join("")}<p class="muted small">Vim keys (h j k l, g, G) work too.</p></div>`;
   o.onclick = (e) => {
     if (e.target === o) closeOverlays(app);
   };
@@ -57,12 +57,12 @@ export function showHelp(app: App) {
 export function showContextMenu(app: App, x: number, y: number) {
   const o = $("#overlay");
   o.className = "on menu-host";
-  o.innerHTML = `<div class="menu" style="left:${Math.min(x, innerWidth - 240)}px;top:${Math.min(y, innerHeight - 200)}px">
-    <button data-m="copy">${icon("copy")} Copy<kbd>Ctrl C</kbd></button>
-    <button data-m="ctx">${icon("sparkle")} Copy with context<kbd>Ctrl Shift C</kbd></button>
+  o.innerHTML = `<div class="menu" role="menu" style="left:${Math.min(x, innerWidth - 240)}px;top:${Math.min(y, innerHeight - 200)}px">
+    <button role="menuitem" data-m="copy">${icon("copy")} Copy<kbd>Ctrl C</kbd></button>
+    <button role="menuitem" data-m="ctx">${icon("sparkle")} Copy with context<kbd>Ctrl Shift C</kbd></button>
     <hr/>
-    <button data-m="inspect">${icon("inspect")} Inspect<kbd>I</kbd></button>
-    <button data-m="baseline">${icon("flag")} Set baseline<kbd>F5</kbd></button>
+    <button role="menuitem" data-m="inspect">${icon("inspect")} Inspect<kbd>I</kbd></button>
+    <button role="menuitem" data-m="baseline">${icon("flag")} Set baseline<kbd>F5</kbd></button>
   </div>`;
   o.onclick = (e) => {
     const m = (e.target as HTMLElement).closest<HTMLElement>("[data-m]")?.dataset.m;

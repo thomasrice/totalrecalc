@@ -5,15 +5,29 @@ import path from "node:path";
 // In browser mode the UI reads JSON fixtures made by `totalrecalc-dump`.
 // They are served from ./fixtures, or from $TOTALRECALC_FIXTURES when set.
 function fixtures(): Plugin {
-  const dir = process.env.TOTALRECALC_FIXTURES ?? path.resolve(__dirname, "fixtures");
+  const dir = fs.realpathSync(process.env.TOTALRECALC_FIXTURES ?? path.resolve(__dirname, "fixtures"));
   return {
     name: "totalrecalc-fixtures",
     configureServer(server) {
       server.middlewares.use("/fixtures/", (req, res, next) => {
-        const file = path.join(dir, decodeURIComponent((req.url ?? "").split("?")[0]));
-        if (!file.startsWith(dir) || !fs.existsSync(file)) return next();
+        let name: string;
+        try {
+          name = decodeURIComponent((req.url ?? "").split("?")[0]).replace(/^\/+/, "");
+        } catch {
+          return next();
+        }
+        // Only plain .json files directly inside the fixtures folder.
+        if (!/^[\w.-]+\.json$/.test(name)) return next();
+        const file = path.join(dir, name);
+        let real: string;
+        try {
+          real = fs.realpathSync(file);
+        } catch {
+          return next();
+        }
+        if (path.relative(dir, real).includes(path.sep) || !fs.statSync(real).isFile()) return next();
         res.setHeader("Content-Type", "application/json");
-        fs.createReadStream(file).pipe(res);
+        fs.createReadStream(real).on("error", () => res.end()).pipe(res);
       });
     },
   };
