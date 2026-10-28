@@ -17,7 +17,8 @@ version is shown on load and each later one arrives after `?delay=`
 milliseconds (default 1600), like a live edit. With `?replay=manual` the
 versions advance only when an embedding page asks, via `postMessage`
 (`totalrecalc:step`, `totalrecalc:play`, `totalrecalc:pause`); the page hears
-`totalrecalc:ready` and `totalrecalc:version` back. `pnpm build:replay` builds
+`totalrecalc:ready` and `totalrecalc:version` back. `?follow` jumps to the first
+edit of each update, and `?fresh` ignores any remembered theme, sheet or panels. `pnpm build:replay` builds
 this mode into `dist-replay/` with the demo fixture, for embedding in a website.
 
 `demo.json` is the Northwind demo at its baseline and after each of the demo

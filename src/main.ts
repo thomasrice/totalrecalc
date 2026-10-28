@@ -73,6 +73,16 @@ export class App {
     // squeezes word spaces; styles.css compensates under this class.
     const ua = navigator.userAgent;
     if (/Linux/.test(ua) && /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) document.documentElement.classList.add("webkitgtk");
+    // An embedded replay can ask to start clean (?fresh): no remembered theme, sheet or panels.
+    if (new URLSearchParams(location.search).has("fresh")) {
+      try {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith("totalrecalc."))
+          .forEach((k) => localStorage.removeItem(k));
+      } catch {
+        /* storage unavailable */
+      }
+    }
     this.theme = localStorage.getItem("totalrecalc.theme") === "dark" ? "dark" : "light";
     this.renderShell();
     this.applyTheme();
