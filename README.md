@@ -6,7 +6,7 @@
 A fast, read-only viewer for Excel workbooks that refreshes itself the moment the file changes, keeps your place, and shows exactly what the agent edited and what recalculated as a result.</p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="Total Recalc showing a financial model just after an agent edit, with the Changes panel open" width="100%" />
+  <img src="docs/wake.gif" alt="An agent edits the model twice; Total Recalc follows each update and ripples across the cells that changed" width="100%" />
 </p>
 
 ---
@@ -38,6 +38,10 @@ Total Recalc is built for that loop:
 | **Faithful rendering** | Number formats, fonts, fills, borders, merged cells, frozen panes, hidden rows and columns, comments and Excel-style text overflow. Light mode looks like Excel; dark mode remaps workbook colours so dark header fills and blue inputs stay legible. |
 | **Honest numbers** | Every version is recalculated by a built-in engine ([IronCalc](https://github.com/ironcalc/IronCalc)). Where a file saved by Excel disagrees with the engine (functions it handles differently), Excel's saved value is shown and marked as coming from the cache. |
 | **Command palette** | `Ctrl+K` for every action, sheet and row label. `Ctrl+G` goes to a cell or label, `Ctrl+F` searches the sheet. |
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="The Changes panel after an agent edit: edited rows, an added row and recalculated results with before/after sparklines" width="100%" />
+</p>
 
 <p align="center">
   <img src="docs/screenshots/years.png" alt="Quarters collapsed to years" width="49%" />
