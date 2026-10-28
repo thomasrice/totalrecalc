@@ -19,7 +19,7 @@ Everything else (looking like a well-made financial model, fast navigation, form
 2. **Edits first, consequences second.** "3 inputs edited · 240 results changed" is the headline, not an amber carpet of 243 cells.
 3. **Never lose your place, never move under you unasked.** Reloads keep sheet, scroll, selection and collapsed groups; Pause holds the view still.
 4. **Calm by default, detail one keystroke away**, and every keystroke has a visible button or menu equivalent.
-5. **Honest numbers.** If a value could not be recalculated, the app says so, and so do the cells that depend on it.
+5. **Numbers you can trace.** If a value could not be recalculated, the app says so, and so do the cells that depend on it.
 
 ## Window layout
 
@@ -128,7 +128,7 @@ For the selected cell: title (row label · column header; sheet and address bene
 - **Failures.** The last good version stays on screen. After 5 seconds of failure the top bar says so, with the version still shown and the reason in its tooltip. The app keeps retrying every second; no action is needed.
 - The app makes no claim that the agent has *finished*; it shows the latest valid file.
 
-## Recalculation honesty
+## Recalculation and saved values
 
 Every version is recalculated with the built-in engine. Each value is one of: **calculated**; **from file cache** (the engine does not support a function used, so the value saved in the file is shown, with a small grey dot, and cells that depend on it get a hollow dot); or **unavailable** (no cache; shown as `—`). The status bar summarises this; `0 errors` is never shown as if it meant "all verified".
 
