@@ -46,6 +46,17 @@ interface Region {
   /** The selection's two boxes, moved rather than recreated. */
   range: HTMLDivElement;
   active: HTMLDivElement;
+  /** Outlines of the cells the selected formula refers to. */
+  refs: HTMLDivElement[];
+}
+
+/** A range of sheet rows and columns (1-based) to outline; 0 runs to the edge. */
+export interface RefBox {
+  r0: number;
+  c0: number;
+  r1: number;
+  c1: number;
+  color: string;
 }
 
 
@@ -94,6 +105,7 @@ export class Grid {
   private dragging = false;
   private raf = 0;
   private frozenVars = "";
+  private refBoxes: RefBox[] = [];
 
   constructor(private events: GridEvents) {
     this.el = document.createElement("div");
@@ -125,7 +137,7 @@ export class Grid {
       inner.append(cells, overlay);
       pane.appendChild(inner);
       this.el.appendChild(pane);
-      this.regions[name] = { pane, inner, cells, overlay, rendered: null, css: "", transform: "", range, active };
+      this.regions[name] = { pane, inner, cells, overlay, rendered: null, css: "", transform: "", range, active, refs: [] };
     }
     this.ticksY = document.createElement("div");
     this.ticksY.className = "ticks ticks-y";
@@ -197,6 +209,7 @@ export class Grid {
       const lastCol = Math.min(m[3], data.meta.maxCol);
       for (let r = m[0]; r <= lastRow; r++) for (let c = m[1]; c <= lastCol; c++) if (r !== m[0] || c !== m[1]) this.covered.add(cellKey(r, c));
     }
+    this.refBoxes = [];
     this.layout();
     this.schedule(true);
   }
@@ -230,6 +243,7 @@ export class Grid {
     this.forecastCol = this.findForecastCol();
     this.clampSelection();
     this.renderTicks();
+    this.renderRefBoxes();
   }
 
   rowOf(view: number) {
@@ -597,6 +611,55 @@ export class Grid {
       const reg = this.regions[name];
       place(reg.range, r0, r1, c0, c1, multi);
       place(reg.active, s.row, s.row, s.col, s.col, true);
+    }
+  }
+
+  /** Outline the cells the selected formula refers to. */
+  setRefBoxes(boxes: RefBox[]) {
+    if (boxes.length === 0 && this.refBoxes.length === 0) return;
+    this.refBoxes = boxes;
+    this.renderRefBoxes();
+  }
+
+  private renderRefBoxes() {
+    // View index of the first visible row or column at or after n, or the last at or before it.
+    const first = (arr: number[], n: number) => {
+      let lo = 0;
+      let hi = arr.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (arr[mid] < n) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    };
+    const cols = this.viewCols.map((vc) => vc.col);
+    const placed = this.refBoxes
+      .map((b) => {
+        const r0 = b.r0 ? first(this.viewRows, b.r0) : 0;
+        const r1 = b.r1 ? first(this.viewRows, b.r1 + 1) - 1 : this.viewRows.length - 1;
+        const c0 = b.c0 ? first(cols, b.c0) : 0;
+        const c1 = b.c1 ? first(cols, b.c1 + 1) - 1 : cols.length - 1;
+        if (r0 > r1 || c0 > c1) return "";
+        const color = b.color;
+        return `transform:translate(${this.colX[c0]}px,${this.rowY[r0]}px);width:${this.colX[c1 + 1] - this.colX[c0]}px;height:${this.rowY[r1 + 1] - this.rowY[r0]}px;border-color:${color};background:color-mix(in srgb, ${color} 9%, transparent)`;
+      })
+      .filter(Boolean);
+    for (const name of ["corner", "top", "left", "main"]) {
+      const reg = this.regions[name];
+      while (reg.refs.length < placed.length) {
+        const el = document.createElement("div");
+        el.className = "ref-box";
+        reg.overlay.insertBefore(el, reg.range);
+        reg.refs.push(el);
+      }
+      reg.refs.forEach((el, i) => {
+        const css = placed[i] ?? "display:none";
+        if (el.dataset.css !== css) {
+          el.dataset.css = css;
+          el.style.cssText = css;
+        }
+      });
     }
   }
 

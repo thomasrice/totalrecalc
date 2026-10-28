@@ -883,6 +883,14 @@ body.panel-open #body {
   }
 }
 
+.ref-box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-radius: 2px;
+}
 .sel-range {
   position: absolute;
   left: 0;

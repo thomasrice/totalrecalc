@@ -89,7 +89,7 @@ export function inspectorHtml(app: App): string {
     <div class="insp-value ${cell?.error ? "err" : ""}">${esc(cell?.text || "blank")}</div>
     ${cell && typeof cell.value === "number" && cell.text !== String(cell.value) ? `<div class="insp-raw">${Number(cell.value.toPrecision(12))}</div>` : ""}
     ${ch ? `<div class="insp-was"><span class="kind k-${ch.kind}">${kindLabel(ch.kind)}</span> was <b>${esc(shortValue(ch.beforeValue, ch.beforeText))}</b> <span class="delta">${esc(delta(ch.beforeValue, cell?.value ?? null, cell?.text ?? "", percent))}</span></div>` : ""}
-    ${cell?.formula ? `<div class="insp-sec">Formula</div><div class="insp-formula">${formulaHtml(cell.formula, { names: app.info!.sheets.map((x) => x.name), current: app.sheetIndex })}</div>` : ""}
+    ${cell?.formula ? `<div class="insp-sec">Formula</div><div class="insp-formula">${formulaHtml(cell.formula, { names: app.info!.sheets.map((x) => x.name), current: app.sheetIndex }, true)}</div>` : ""}
     ${ch?.beforeFormula && ch.beforeFormula !== cell?.formula ? `<div class="insp-formula before">${esc(ch.beforeFormula)}</div>` : ""}
     ${cell?.comment ? `<div class="insp-sec">Note</div><div class="insp-note">${esc(cell.comment)}</div>` : ""}
     ${
@@ -198,34 +198,75 @@ export function sparkline(d: SheetData, r: number, cells: CellChange[]): string 
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><path d="${path(before)}" class="sp-before"/><path d="${path(after)}" class="sp-after"/></svg>`;
 }
 
-export function formulaHtml(f: string, sheets?: { names: string[]; current: number }): string {
-  // Sheet-qualified or not; a cell, a range, a whole-column (A:C) or whole-row (3:5) range.
+/** A reference found in a formula: where it sits in the text and what it covers. */
+export interface FormulaRef {
+  at: number;
+  text: string;
+  /** Sheet name as written, or "" for the formula's own sheet. */
+  sheet: string;
+  /** Covered rows and columns (1-based); 0 means "to the edge" for whole rows or columns. */
+  r0: number;
+  c0: number;
+  r1: number;
+  c1: number;
+}
+
+/** Every cell, range, whole-column or whole-row reference, outside string literals. */
+export function formulaRefs(f: string): FormulaRef[] {
   const re = /((?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!)?(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}|\$?\d+:\$?\d+)/g;
-  // String literals are left alone: split on quotes and only scan the code between them.
-  return f
-    .split('"')
-    .map((part, i) => {
-      if (i % 2 === 1) return esc(part);
-      let out = "";
-      let last = 0;
+  const refs: FormulaRef[] = [];
+  let offset = 0;
+  f.split('"').forEach((part, i) => {
+    if (i % 2 === 0) {
       for (const m of part.matchAll(re)) {
         const at = m.index ?? 0;
         const before = part[at - 1] ?? "";
         const after = part[at + m[0].length] ?? "";
         if (/[A-Za-z0-9_.$]/.test(before) || /[A-Za-z0-9_(]/.test(after)) continue;
-        out += esc(part.slice(last, at));
         const sheet = m[1] ? m[1].slice(0, -1).replace(/^'|'$/g, "").replace(/''/g, "'") : "";
-        const idx = sheets ? (sheet ? sheets.names.indexOf(sheet) : sheets.current) : -1;
-        const cls = sheet && idx !== sheets?.current ? "fref other" : "fref";
-        const cellRef = /^\$?([A-Z]{1,3})\$?(\d+)/.exec(m[2]);
-        out +=
-          idx >= 0 && cellRef
-            ? `<button type="button" class="${cls}" data-sheet="${idx}" data-r="${cellRef[2]}" data-c="${colNumber(cellRef[1])}" title="Go to ${esc(m[0])}">${esc(m[0])}</button>`
-            : `<span class="${cls}">${esc(m[0])}</span>`;
-        last = at + m[0].length;
+        const [a, b = a] = m[2].replace(/\$/g, "").split(":");
+        const end = (x: string) => {
+          const cell = /^([A-Z]{1,3})?(\d+)?$/.exec(x);
+          return { c: cell?.[1] ? colNumber(cell[1]) : 0, r: cell?.[2] ? Number(cell[2]) : 0 };
+        };
+        const e0 = end(a);
+        const e1 = end(b);
+        refs.push({ at: offset + at, text: m[0], sheet, r0: Math.min(e0.r, e1.r), c0: Math.min(e0.c, e1.c), r1: Math.max(e0.r, e1.r), c1: Math.max(e0.c, e1.c) });
       }
-      return out + esc(part.slice(last));
-    })
-    .join('"');
+    }
+    offset += part.length + 1;
+  });
+  return refs;
+}
+
+/** Colours for a formula's references, as Excel does: one per distinct reference. */
+const REF_COLORS = ["#2f6fdf", "#d9363e", "#1f9d55", "#8e44d6", "#d63384", "#0b93a8", "#b7791f"];
+
+export function refColors(refs: FormulaRef[]): string[] {
+  const seen = new Map<string, string>();
+  return refs.map((r) => {
+    const key = `${r.sheet}!${r.text.replace(/\$/g, "")}`;
+    if (!seen.has(key)) seen.set(key, REF_COLORS[seen.size % REF_COLORS.length]);
+    return seen.get(key)!;
+  });
+}
+
+export function formulaHtml(f: string, sheets?: { names: string[]; current: number }, colored = false): string {
+  const refs = formulaRefs(f);
+  const colors = colored ? refColors(refs) : [];
+  let out = "";
+  let last = 0;
+  refs.forEach((ref, i) => {
+    out += esc(f.slice(last, ref.at));
+    const idx = sheets ? (ref.sheet ? sheets.names.indexOf(ref.sheet) : sheets.current) : -1;
+    const cls = ref.sheet && idx !== sheets?.current ? "fref other" : "fref";
+    const color = colors[i] && !(ref.sheet && idx !== sheets?.current) ? ` style="color:${colors[i]}"` : "";
+    out +=
+      idx >= 0 && ref.r0 && ref.c0
+        ? `<button type="button" class="${cls}" data-sheet="${idx}" data-r="${ref.r0}" data-c="${ref.c0}" title="Go to ${esc(ref.text)}"${color}>${esc(ref.text)}</button>`
+        : `<span class="${cls}"${color}>${esc(ref.text)}</span>`;
+    last = ref.at + ref.text.length;
+  });
+  return out + esc(f.slice(last));
 }
 

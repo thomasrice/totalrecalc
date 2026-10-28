@@ -8,7 +8,7 @@ import type { Theme } from "./theme";
 import { ago, clock, delta, esc, shortValue } from "./format";
 import { icon } from "./icons";
 import { $ } from "./dom";
-import { changeReport, changesHtml, formulaHtml, inspectorHtml, kindLabel } from "./panels";
+import { changeReport, changesHtml, formulaHtml, formulaRefs, inspectorHtml, kindLabel, refColors } from "./panels";
 import { openPalette } from "./palette";
 import { showContextMenu, showHelp, toast } from "./overlays";
 import { handleKey } from "./keys";
@@ -625,6 +625,7 @@ export class App {
       this.selectRaf = 0;
       this.renderPeek();
       this.renderStatus();
+      this.outlineRefs();
       if (this.panel === "changes") this.highlightChangeRow();
     });
   }
@@ -675,6 +676,7 @@ export class App {
   renderAll() {
     this.renderTopBar();
     this.renderPeek();
+    this.outlineRefs();
     this.renderRail();
     this.renderPanel();
     this.renderStatus();
@@ -753,6 +755,22 @@ export class App {
     void this.jumpTo(this.sheetIndex, next.r, next.c, false);
   }
 
+  /** Outline the cells a single selected formula refers to on this sheet, in the strip's colours. */
+  outlineRefs() {
+    const d = this.data;
+    const s = this.grid.sel;
+    const vc = this.grid.colOf(s.col);
+    const formula = d && vc && s.row === s.row2 && s.col === s.col2 ? d.cell(this.grid.rowOf(s.row), vc.col)?.formula : undefined;
+    if (!formula || !d) return this.grid.setRefBoxes([]);
+    const refs = formulaRefs(formula);
+    const colors = refColors(refs);
+    this.grid.setRefBoxes(
+      refs
+        .map((r, i) => ({ ...r, color: colors[i] }))
+        .filter((r) => !r.sheet || r.sheet === d.meta.name),
+    );
+  }
+
   renderPeek() {
     const el = $("#peek");
     const d = this.data;
@@ -779,7 +797,7 @@ export class App {
       <span class="value ${cell?.error ? "err" : ""} ${cell?.text ? "" : "empty"}">${esc(cell?.text || "blank")}</span>
       ${ch ? `<span class="was">was ${esc(shortValue(ch.beforeValue, ch.beforeText))}</span>${dl ? `<span class="delta">${esc(dl)}</span>` : ""}${kind}` : ""}
       ${cell?.calc === 1 ? `<span class="calc-note" title="Total Recalc's engine cannot evaluate this formula faithfully (or it depends on one that it cannot), so the value Excel saved in the file is shown">from file cache</span>` : ""}
-      ${cell?.formula ? `<span class="formula" title="${esc(cell.formula)}">${formulaHtml(cell.formula)}</span>` : ""}
+      ${cell?.formula ? `<span class="formula" title="${esc(cell.formula)}">${formulaHtml(cell.formula, undefined, true)}</span>` : ""}
       ${cell?.comment ? `<span class="comment-note" title="${esc(cell.comment)}">${icon("note")}</span>` : ""}`;
   }
 
