@@ -34,7 +34,6 @@ Total Recalc is built for that loop:
 | **Changes panel** | Every change since your baseline, grouped by row, with the period span, the range of moves and a before/after sparkline. Switch between *since baseline* and *latest update*; set a new baseline at any time (with Undo). |
 | **Pause** | Hold the version on screen while you talk about it. Total Recalc keeps watching and tells you how many newer versions are waiting. |
 | **Inspector** | The selected cell's value, previous value, formula (with clickable references), its inputs and everything that uses it. Follow a chain with Enter, come back with Backspace. |
-| **Quarters and years** | Period headers like `1Q25A` and `FY2025E` are recognised and quarters fold under their year. Collapse to annual columns with one key; where a year has no annual column of its own, Total Recalc shows a clearly marked derived one. |
 | **Faithful rendering** | Number formats, fonts, fills, borders, merged cells, frozen panes, hidden rows and columns, comments and Excel-style text overflow. Light mode looks like Excel; dark mode remaps workbook colours so dark header fills and blue inputs stay legible. |
 | **Honest numbers** | Every version is recalculated by a built-in engine ([IronCalc](https://github.com/ironcalc/IronCalc)). Where the engine cannot evaluate a formula faithfully (it errors, or the formula uses `INDIRECT`, `OFFSET`, `CELL`, `INFO` or another workbook) and the file carries Excel's saved result, that result is shown and marked, and so are the formulas that depend on it. |
 | **Command palette** | `Ctrl+K` for every action, sheet and row label. `Ctrl+G` goes to a cell or label, `Ctrl+F` searches the sheet. |
@@ -44,8 +43,7 @@ Total Recalc is built for that loop:
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/years.png" alt="Quarters collapsed to years" width="49%" />
-  <img src="docs/screenshots/dark.png" alt="Dark theme with the inspector open" width="49%" />
+  <img src="docs/screenshots/dark.png" alt="Dark theme with the inspector open" width="100%" />
 </p>
 
 ## Try it
@@ -75,7 +73,6 @@ uv run --with openpyxl demo/agent.py demo/northwind.xlsx
 | `F5` | Set the baseline to the version on screen |
 | `D` · `I` (or `F2`) | Changes panel · Inspector |
 | `Enter` / `Backspace` (or `Alt+←`) | Follow the first input / go back |
-| `[` / `]` | Collapse to years / expand quarters |
 | `Ctrl+C` · `Ctrl+Shift+C` | Copy · copy with context |
 | `Ctrl+K` · `Ctrl+G` · `Ctrl+F` | Command palette · go to a cell or label · find on this sheet |
 | `Ctrl+O` | Open a workbook |

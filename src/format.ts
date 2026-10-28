@@ -1,7 +1,6 @@
 // Small formatting helpers shared by the panels.
 
 import type { Value } from "./types";
-import { formatLike } from "./periods";
 
 export const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -41,4 +40,19 @@ export function shortValue(v: Value, text: string): string {
 export function signedPercent(p: number, unit = "%"): string {
   if (Math.abs(p) < 0.005) return `0${unit}`;
   return `${p > 0 ? "+" : "−"}${Math.abs(p).toFixed(Math.abs(p) < 1 ? 2 : 1)}${unit}`;
+}
+
+/** Format a number the way its neighbours are formatted. */
+export function formatLike(v: number, samples: string[]): string {
+  const sample = samples.find((s) => /\d/.test(s)) ?? "";
+  const decimals = (sample.replace(/[()\-%]/g, "").split(".")[1] ?? "").replace(/\D/g, "").length;
+  const grouping = sample.includes(",");
+  const parens = samples.some((s) => /^\(.*\)$/.test(s.trim()));
+  const abs = Math.abs(v).toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: grouping,
+  });
+  if (v < 0) return parens ? `(${abs})` : `-${abs}`;
+  return abs;
 }

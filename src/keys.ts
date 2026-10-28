@@ -106,10 +106,6 @@ export function handleKey(app: App, e: KeyboardEvent) {
     case "Backspace":
       e.preventDefault();
       return void app.back();
-    case "[":
-      return app.setLevel(true);
-    case "]":
-      return app.setLevel(false);
     case "t":
       return app.toggleTheme();
     case "?":
@@ -128,7 +124,7 @@ function edgeOfData(app: App, row: number, col: number, dr: number, dc: number):
   const filled = (ri: number, ci: number) => {
     const vc = app.grid.colOf(ci);
     const r = app.grid.rowOf(ri);
-    return vc?.kind === "sheet" && !!d.cell(r, vc.col)?.text;
+    return !!vc && !!d.cell(r, vc.col)?.text;
   };
   let r = row;
   let c = col;

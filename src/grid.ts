@@ -5,15 +5,19 @@ import type { CellStyle, ChangeKind } from "./types";
 import type { SheetData } from "./sheet";
 import { cellKey, colLetters } from "./sheet";
 import { esc } from "./format";
-import { type ViewCol, type YearGroup, derivedValue, periodLabel } from "./periods";
 import { type Theme, workbookColors } from "./theme";
 
 const ROW_HEAD_W = 46;
 const LETTER_H = 22;
-const GROUP_H = 22;
 const DEFAULT_ROW_H = 24;
 const OVERSCAN_ROWS = 24;
 const OVERSCAN_COLS = 8;
+
+/** A column on screen: hidden columns have none. */
+export interface ViewCol {
+  col: number;
+  width: number;
+}
 
 export interface Selection {
   /** Active cell, as view indices. */
@@ -26,8 +30,6 @@ export interface Selection {
 
 interface GridEvents {
   select(sel: Selection): void;
-  toggleGroup(year: number): void;
-  setLevel(collapsed: boolean): void;
   contextMenu(x: number, y: number): void;
   hoverCell(row: number | null, col: number | null, x: number, y: number): void;
 }
@@ -64,8 +66,6 @@ export class Grid {
   private data: SheetData | null = null;
   private styles: CellStyle[] = [];
   private theme: Theme = "light";
-  private groups: YearGroup[] = [];
-  private collapsed = new Set<number>();
 
   viewCols: ViewCol[] = [];
   viewRows: number[] = [];
@@ -100,7 +100,7 @@ export class Grid {
     this.sizer.className = "grid-sizer";
     this.viewport.appendChild(this.sizer);
     this.el.appendChild(this.viewport);
-    for (const name of ["corner", "top", "left", "main", "hdrFrozen", "hdrScroll", "grpFrozen", "grpScroll", "rowFrozen", "rowScroll", "box"]) {
+    for (const name of ["corner", "top", "left", "main", "hdrFrozen", "hdrScroll", "rowFrozen", "rowScroll", "box"]) {
       const pane = document.createElement("div");
       pane.className = `grid-pane pane-${name}`;
       const inner = document.createElement("div");
@@ -141,12 +141,6 @@ export class Grid {
       },
       { passive: false },
     );
-    this.el.addEventListener("click", (e) => {
-      const t = (e.target as HTMLElement).closest<HTMLElement>("[data-year],[data-level]");
-      if (!t) return;
-      if (t.dataset.year) this.events.toggleGroup(Number(t.dataset.year));
-      if (t.dataset.level) this.events.setLevel(t.dataset.level === "years");
-    });
   }
 
   focus() {
@@ -172,13 +166,13 @@ export class Grid {
     return this.zoom;
   }
 
-  setSheet(data: SheetData, styles: CellStyle[], groups: YearGroup[], collapsed: Set<number>, viewCols: ViewCol[]) {
+  setSheet(data: SheetData, styles: CellStyle[]) {
     const stylesChanged = styles !== this.styles;
     this.data = data;
     this.styles = styles;
-    this.groups = groups;
-    this.collapsed = collapsed;
-    this.viewCols = viewCols;
+    const hidden = new Set(data.meta.hiddenCols);
+    this.viewCols = [];
+    for (let c = 1; c <= data.meta.maxCol; c++) if (!hidden.has(c)) this.viewCols.push({ col: c, width: data.meta.colWidths[c - 1] ?? 64 });
     if (stylesChanged) this.writeStyleSheet();
     this.merges.clear();
     this.covered.clear();
@@ -209,14 +203,13 @@ export class Grid {
     this.colX = [0];
     this.colIndex.clear();
     this.viewCols.forEach((vc, i) => {
-      if (vc.kind === "sheet") this.colIndex.set(vc.col, i);
+      this.colIndex.set(vc.col, i);
       this.colX.push(this.colX[i] + Math.round(vc.width * z));
     });
     this.frozenR = this.viewRows.filter((r) => r <= d.meta.frozenRows).length;
-    this.frozenC = this.viewCols.filter((vc) => vc.kind === "sheet" && vc.col <= d.meta.frozenCols).length;
+    this.frozenC = this.viewCols.filter((vc) => vc.col <= d.meta.frozenCols).length;
     this.frozenW = this.colX[this.frozenC];
     this.frozenH = this.rowY[this.frozenR];
-    this.headH = LETTER_H + (this.groups.length ? GROUP_H : 0);
     this.sizer.style.width = `${ROW_HEAD_W + this.colX[this.colX.length - 1] + 2}px`;
     this.sizer.style.height = `${this.headH + this.rowY[this.rowY.length - 1] + 2}px`;
     for (const r of Object.values(this.regions)) r.rendered = null;
@@ -307,7 +300,6 @@ export class Grid {
     const fw = this.frozenW;
     const fh = this.frozenH;
     const hh = this.headH;
-    const gh = this.groups.length ? GROUP_H : 0;
     const totalW = this.colX[this.colX.length - 1];
     const totalH = this.rowY[this.rowY.length - 1];
     const lastR = this.viewRows.length;
@@ -354,19 +346,14 @@ export class Grid {
     place("main", ROW_HEAD_W + fw, hh + fh, scrollW, scrollH, -fw - sl, -fh - st);
     body("main", [r0, r1], [c0, c1]);
 
-    // Column letters and the group bar.
-    place("hdrFrozen", ROW_HEAD_W, gh, fw, LETTER_H, 0, 0).cells.innerHTML = this.letterHtml(0, this.frozenC);
-    place("hdrScroll", ROW_HEAD_W + fw, gh, scrollW, LETTER_H, -fw - sl, 0).cells.innerHTML = this.letterHtml(c0, c1);
-    const gf = place("grpFrozen", ROW_HEAD_W, 0, fw, gh, 0, 0);
-    const gs = place("grpScroll", ROW_HEAD_W + fw, 0, scrollW, gh, -fw - sl, 0);
-    gf.cells.innerHTML = gh ? this.levelSwitchHtml(fw) + this.groupHtml(0, this.frozenC) : "";
-    gs.cells.innerHTML = gh ? this.groupHtml(c0, c1) + this.forecastLabelHtml() : "";
+    // Column letters.
+    place("hdrFrozen", ROW_HEAD_W, 0, fw, LETTER_H, 0, 0).cells.innerHTML = this.letterHtml(0, this.frozenC);
+    place("hdrScroll", ROW_HEAD_W + fw, 0, scrollW, LETTER_H, -fw - sl, 0).cells.innerHTML = this.letterHtml(c0, c1);
 
     // Row numbers.
     place("rowFrozen", 0, hh, ROW_HEAD_W, fh, 0, 0).cells.innerHTML = this.rowNumHtml(0, this.frozenR);
     place("rowScroll", 0, hh + fh, ROW_HEAD_W, scrollH, 0, -fh - st).cells.innerHTML = this.rowNumHtml(r0, r1);
-    const box = place("box", 0, 0, ROW_HEAD_W, hh, 0, 0);
-    box.cells.innerHTML = gh && fw < 150 ? this.levelSwitchHtml(ROW_HEAD_W, true) : "";
+    place("box", 0, 0, ROW_HEAD_W, hh, 0, 0);
 
     this.el.classList.toggle("has-frozen-cols", this.frozenC > 0);
     this.el.classList.toggle("has-frozen-rows", this.frozenR > 0);
@@ -390,7 +377,6 @@ export class Grid {
       for (let c = c0 + 1; c <= c1; c++) out.push(`<div class="gl gv" style="left:${this.colX[c] - 1}px;top:${top}px;height:${bottom - top}px"></div>`);
       for (let r = r0 + 1; r <= r1; r++) out.push(`<div class="gl gh" style="top:${this.rowY[r] - 1}px;left:${left}px;width:${right - left}px"></div>`);
     }
-    const header = d.meta.headerRow;
     const now = performance.now();
     for (let ri = r0; ri < r1; ri++) {
       const row = this.viewRows[ri];
@@ -400,13 +386,6 @@ export class Grid {
         const vc = this.viewCols[ci];
         const x = this.colX[ci];
         let w = this.colX[ci + 1] - x;
-        if (vc.kind === "derived") {
-          const text = row === header ? `${periodLabel(vc.group)} Σ` : (derivedValue(d, row, vc.group, this.styles)?.text ?? "");
-          const sample = d.cell(row, vc.group.quarters[vc.group.quarters.length - 1]);
-          const cls = sample ? `s${sample.style}` : "";
-          out.push(`<div class="c derived ${cls}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px" title="Derived from the four quarters">${esc(text)}</div>`);
-          continue;
-        }
         const col = vc.col;
         const k = cellKey(row, col);
         if (this.covered.has(k)) continue;
@@ -440,7 +419,6 @@ export class Grid {
           let j = ci + 1;
           while (j < this.viewCols.length && j < spillLimit && this.colX[j] - x < 1200 * z) {
             const n = this.viewCols[j];
-            if (n.kind !== "sheet") break;
             const nc = d.cell(row, n.col);
             if ((nc && nc.text) || this.covered.has(cellKey(row, n.col)) || d.change(row, n.col)) break;
             j++;
@@ -472,11 +450,11 @@ export class Grid {
       const vc = this.viewCols[ci];
       const x = this.colX[ci];
       const w = this.colX[ci + 1] - x;
-      const label = vc.kind === "sheet" ? colLetters(vc.col) : "Σ";
+      const label = colLetters(vc.col);
       const on = ci >= s0 && ci <= s1 ? " on" : "";
-      const add = vc.kind === "sheet" && added.has(vc.col) ? " added" : "";
+      const add = added.has(vc.col) ? " added" : "";
       const fc = ci === this.forecastCol;
-      out.push(`<div class="hd${on}${add}${vc.kind === "derived" ? " derived" : ""}${fc ? " fc" : ""}" style="left:${x}px;width:${w}px"${fc ? ` title="Estimates start here"` : ""}>${label}</div>`);
+      out.push(`<div class="hd${on}${add}${fc ? " fc" : ""}" style="left:${x}px;width:${w}px"${fc ? ` title="Estimates start here"` : ""}>${label}</div>`);
     }
     return out.join("");
   }
@@ -498,31 +476,6 @@ export class Grid {
     return out.join("");
   }
 
-  private groupHtml(c0: number, c1: number): string {
-    const out: string[] = [];
-    for (const g of this.groups) {
-      const collapsed = this.collapsed.has(g.year);
-      const members = [...g.quarters, ...(g.annual !== null ? [g.annual] : [])];
-      const idx = members.map((c) => this.colIndex.get(c)).filter((i): i is number => i !== undefined);
-      const derivedIdx = this.viewCols.findIndex((vc) => vc.kind === "derived" && vc.group.year === g.year);
-      if (derivedIdx >= 0) idx.push(derivedIdx);
-      if (!idx.length) continue;
-      const lo = Math.min(...idx);
-      const hi = Math.max(...idx);
-      if (hi < c0 || lo >= c1) continue;
-      const x = this.colX[lo] + 3;
-      const w = this.colX[hi + 1] - this.colX[lo] - 6;
-      const hidden = collapsed ? this.hiddenChanges(g) : 0;
-      // Keep the year's label in view while any part of its bracket is.
-      const visibleLeft = this.frozenW + this.viewport.scrollLeft;
-      const shift = lo >= this.frozenC ? Math.max(0, Math.min(visibleLeft - x, w - 70)) : 0;
-      out.push(
-        `<div class="grp${collapsed ? " collapsed" : ""}" style="left:${x}px;width:${w}px"><button data-year="${g.year}" style="${shift && !collapsed ? `left:${shift + 6}px` : ""}" title="${collapsed ? "Expand" : "Collapse"} ${g.year}">${collapsed ? "▸" : "▾"} ${g.year}${hidden ? `<span class="grp-badge">${hidden}</span>` : ""}</button></div>`,
-      );
-    }
-    return out.join("");
-  }
-
   private forecastCol = -1;
 
   /** The first estimate column that follows an actual one: where the forecast starts. */
@@ -530,7 +483,6 @@ export class Grid {
     let sawActual = false;
     for (let ci = 0; ci < this.viewCols.length; ci++) {
       const vc = this.viewCols[ci];
-      if (vc.kind !== "sheet") continue;
       const kind = this.data?.meta.periods[vc.col - 1]?.kind;
       if (kind === "A") sawActual = true;
       else if (kind === "E" && sawActual) return ci;
@@ -538,31 +490,6 @@ export class Grid {
     return -1;
   }
 
-  /** "Forecast →" beside the boundary, moved clear of a year label that starts there. */
-  private forecastLabelHtml(): string {
-    const ci = this.forecastCol;
-    if (ci < this.frozenC) return "";
-    const x = this.colX[ci];
-    const yearStartsHere = this.groups.some((g) => {
-      const lo = Math.min(...g.quarters.map((c) => this.colIndex.get(c) ?? Infinity));
-      return Number.isFinite(lo) && Math.abs(this.colX[lo] - x) < 90;
-    });
-    return `<div class="fc-label" style="left:${x + (yearStartsHere ? 78 : 6)}px">Forecast</div>`;
-  }
-
-  private levelSwitchHtml(width: number, compact = false): string {
-    const years = this.collapsed.size > 0;
-    if (compact || width < 150) {
-      return `<div class="level-switch compact"><button data-level="quarters" class="${years ? "" : "on"}" title="Show quarters (])">Q</button><button data-level="years" class="${years ? "on" : ""}" title="Collapse to years ([)">Y</button></div>`;
-    }
-    return `<div class="level-switch"><button data-level="quarters" class="${years ? "" : "on"}" title="Show every quarter (])">Quarters</button><button data-level="years" class="${years ? "on" : ""}" title="Collapse to years ([)">Years</button></div>`;
-  }
-
-  private hiddenChanges(g: YearGroup): number {
-    const d = this.data!;
-    const cols = new Set(g.quarters);
-    return d.changeList.filter((ch) => cols.has(ch.c)).length;
-  }
 
   // ------------------------------------------------------------ selection
 

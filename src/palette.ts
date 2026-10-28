@@ -91,8 +91,6 @@ function paletteItems(app: App, q: string, mode: "all" | "go" | "find"): Palette
       { kind: "Action", title: "Inspect the selected cell", hint: "I", run: () => app.togglePanel("inspector") },
       { kind: "Action", title: "Copy with context", hint: "Ctrl Shift C", run: () => void app.copy(true) },
       { kind: "Action", title: "Copy change report", run: () => void app.copyChangeReport() },
-      { kind: "Action", title: "Collapse to years", hint: "[", run: () => app.setLevel(true) },
-      { kind: "Action", title: "Expand quarters", hint: "]", run: () => app.setLevel(false) },
       { kind: "Action", title: app.theme === "light" ? "Dark theme" : "Light theme", hint: "T", run: () => app.toggleTheme() },
       { kind: "Action", title: "Keyboard shortcuts", hint: "?", run: () => showHelp(app) },
     ];

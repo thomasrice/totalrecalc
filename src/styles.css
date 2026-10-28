@@ -700,14 +700,10 @@ body.panel-open #body {
 .pane-hdrScroll,
 .pane-rowFrozen,
 .pane-rowScroll,
-.pane-box,
-.pane-grpFrozen,
-.pane-grpScroll {
+.pane-box {
   background: var(--head);
 }
-.pane-box,
-.pane-grpFrozen,
-.pane-grpScroll {
+.pane-box {
   pointer-events: auto;
 }
 .pane-box {
@@ -810,12 +806,6 @@ body.panel-open #body {
 .c.has-comment {
   background-image: linear-gradient(225deg, var(--red) 0 5px, transparent 5px);
 }
-.c.derived {
-  font-style: italic;
-  color: var(--muted);
-  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--accent) 4%, transparent) 6px 7px);
-  justify-content: flex-end;
-}
 
 /* Changes: a bar for edits, a tint for everything. */
 /* Edits also get a thin outline, so they show even on yellow input fills. */
@@ -900,9 +890,6 @@ body.panel-open #body {
 .hd.added {
   box-shadow: inset 0 -2px 0 var(--amber-bar);
 }
-.hd.derived {
-  color: var(--accent);
-}
 .rn {
   position: absolute;
   left: 0;
@@ -929,82 +916,6 @@ body.panel-open #body {
   box-shadow: inset 0 -2px 0 var(--red);
 }
 
-.grp {
-  position: absolute;
-  top: 3px;
-  height: 16px;
-  border: 1px solid var(--line-strong);
-  border-bottom: 0;
-  border-radius: 5px 5px 0 0;
-}
-.grp button {
-  position: absolute;
-  top: -3px;
-  left: 6px;
-  white-space: nowrap;
-  z-index: 1;
-  height: 18px;
-  padding: 0 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  background: var(--head);
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-variant-numeric: tabular-nums;
-}
-.grp button:hover {
-  color: var(--accent);
-}
-.grp.collapsed {
-  border-style: dashed;
-}
-.grp.collapsed button {
-  left: 50%;
-  transform: translateX(-50%);
-}
-.grp-badge {
-  background: var(--amber-tint);
-  color: var(--amber);
-  border-radius: 999px;
-  padding: 0 5px;
-  font-size: 10px;
-}
-.level-switch {
-  position: absolute;
-  left: 8px;
-  top: 2px;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--line) 60%, transparent);
-}
-.level-switch.compact {
-  left: 4px;
-  right: 4px;
-}
-.level-switch button {
-  flex: 1;
-  height: 14px;
-  padding: 0 8px;
-  font-size: 10.5px;
-  font-weight: 600;
-  border-radius: 4px;
-  color: var(--muted);
-  line-height: 14px;
-}
-.level-switch.compact button {
-  padding: 0;
-  font-size: 10px;
-}
-.level-switch button.on {
-  background: var(--surface);
-  color: var(--accent);
-  box-shadow: 0 0 0 1px var(--line);
-}
 
 .fc-line {
   position: absolute;
@@ -1016,20 +927,6 @@ body.panel-open #body {
 .hd.fc {
   box-shadow: inset 1.5px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
   color: var(--accent);
-}
-.fc-label {
-  position: absolute;
-  top: 4px;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent);
-  white-space: nowrap;
-  pointer-events: none;
-}
-.fc-label::after {
-  content: " →";
 }
 
 /* Change ticks along the scrollbars. */

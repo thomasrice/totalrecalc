@@ -40,7 +40,6 @@ export function showHelp(app: App) {
     ["F5", "Set baseline"],
     ["D · I (or F2)", "Changes · Inspector"],
     ["Enter / Backspace (or Alt+←)", "Follow first input / go back"],
-    ["[ / ]", "Collapse to years / expand quarters"],
     ["Ctrl+C · Ctrl+Shift+C", "Copy · copy with context for your agent"],
     ["Ctrl+K · Ctrl+G · Ctrl+F", "Commands · go to · find"],
     ["Ctrl+O", "Open a workbook"],

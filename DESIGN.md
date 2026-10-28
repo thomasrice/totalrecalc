@@ -58,17 +58,9 @@ Everything else (looking like a well-made financial model, fast navigation, form
   - Text colours keep their meaning: blue `#7FB2FF`, black → primary text `#E6E8EB`, green `#6FCF97`. The app never infers a cell's type from its colour.
   - Red is reserved for errors and removals; negative numbers follow the file's format (brackets) in normal text.
 - **Typography.** Inter (embedded) for chrome, labels and numbers, with `font-variant-numeric: tabular-nums` so columns of digits align; the webview renders text with each platform's native rasteriser. Numbers at 13px on 24px rows, labels 13px, headers 12px semibold.
-- **Structure made visible.** Annual columns get a slightly heavier left rule; quarter columns are a touch quieter; the actual/forecast boundary (from the `A`/`E` suffix in headers, or a change in input styling) is a fine vertical accent line labelled `forecast →` in the header.
+- **Structure made visible.** The actual/forecast boundary (from the `A`/`E` suffix in headers, or a change in input styling) is a fine vertical accent line, with its column letter marked.
 - **Interaction.** Click, Shift-click and drag to select ranges (with auto-scroll); visible scrollbars; mouse-wheel and Shift-wheel scrolling; `Ctrl+G` go to address or label; `Esc` clears selection or closes the panel.
 
-## Period groups (collapsible quarters)
-
-Grouping comes from the column headers. Many generated models carry no outline levels at all, so the workbook's own outline groups are not used.
-
-- Headers that parse as periods (`1Q25A`, `FY2025E`, `Q1 2025`, `2025`) are grouped by year. A year with four quarters gets a group; its annual column, when present, is its summary column.
-- The group bar above the headers shows each year as a bracket with a `▾`/`▸` toggle. A level control at its left shows *Quarters* / *Years*, collapsing every year at once (`[` and `]`).
-- When a collapsed year has no annual column in the workbook, the app shows a **derived annual column**, visibly marked as derived (italic header, `Σ`). Flows sum the four quarters; balance-sheet lines take 4Q; ratios, per-share and rate lines are left blank rather than guessed. Rows the app cannot classify stay blank.
-- A collapsed group shows a count badge if it hides changes. Jumping to a hidden change opens the group temporarily and offers to restore it.
 
 ## Changes
 
@@ -169,7 +161,7 @@ Small touches that make the app feel made with care, none of which get in the wa
 - **Command palette** (`Ctrl+K`): every action, sheet and row label in one searchable list.
 - **Copy feedback**: a small toast shows exactly what went to the clipboard.
 - **A first-run window** with the Total Recalc mark and a drop zone that glows when a file is dragged over it.
-- **Remembered state** per file: last sheet, scroll position per sheet, collapsed years and the open panel.
+- **Remembered state** per file: last sheet, scroll position per sheet, and the open panel.
 
 ## Out of scope for version one
 

@@ -4,7 +4,6 @@ import { type Api, createApi, isTauri } from "./api";
 import type { BookInfo, CellChange, Inspection, WatchState } from "./types";
 import { SheetData, address, colLetters } from "./sheet";
 import { Grid, type Selection } from "./grid";
-import { buildViewCols, yearGroups, type YearGroup } from "./periods";
 import type { Theme } from "./theme";
 import { ago, clock, delta, esc, shortValue } from "./format";
 import { icon } from "./icons";
@@ -19,7 +18,6 @@ type Panel = "changes" | "inspector" | null;
 
 interface FileMemory {
   sheet?: string;
-  collapsed?: Record<string, number[]>;
   panel?: Panel;
   scroll?: Record<string, { top: number; left: number }>;
 }
@@ -41,8 +39,6 @@ export class App {
   pending = new Set<number>();
   sheetIndex = 0;
   data: SheetData | null = null;
-  groups: YearGroup[] = [];
-  collapsed = new Map<string, Set<number>>();
   panel: Panel = null;
   theme: Theme = "light";
   watch: WatchState = { state: "loading" };
@@ -61,8 +57,6 @@ export class App {
   constructor() {
     this.grid = new Grid({
       select: (s) => this.onSelect(s),
-      toggleGroup: (y) => this.toggleYear(y),
-      setLevel: (years) => this.setLevel(years),
       contextMenu: (x, y) => showContextMenu(this, x, y),
       hoverCell: (r, c, x, y) => this.hover(r, c, x, y),
     });
@@ -151,7 +145,6 @@ export class App {
       return;
     }
     const mem = this.memory();
-    this.collapsed = new Map(Object.entries(mem.collapsed ?? {}).map(([k, v]) => [k, new Set(v)]));
     this.panel = mem.panel ?? null;
   }
 
@@ -168,7 +161,6 @@ export class App {
     if (!this.path || !this.data) return;
     const mem: FileMemory = {
       sheet: this.data.meta.name,
-      collapsed: Object.fromEntries([...this.collapsed].map(([k, v]) => [k, [...v]])),
       panel: this.panel,
       scroll: { ...(this.memory().scroll ?? {}), [this.data.meta.name]: this.grid.scrollPos },
     };
@@ -311,11 +303,7 @@ export class App {
     const sameSheet = this.data?.meta.name === data.meta.name;
     this.data = data;
     this.inspection = null;
-    this.groups = yearGroups(data.meta);
-    const collapsed = this.collapsed.get(data.meta.name) ?? new Set<number>();
-    for (const y of [...collapsed]) if (!this.groups.some((g) => g.year === y)) collapsed.delete(y);
-    this.collapsed.set(data.meta.name, collapsed);
-    this.grid.setSheet(data, this.info!.styles, this.groups, collapsed, buildViewCols(data.meta, this.groups, collapsed));
+    this.grid.setSheet(data, this.info!.styles);
     if (place && typeof place === "object" && sameSheet) this.restore(place);
     else {
       const saved = this.memory().scroll?.[data.meta.name];
@@ -335,22 +323,13 @@ export class App {
     const point = (vr: number, vcIndex: number): Point | null => {
       const row = this.grid.rowOf(vr);
       const vc = this.grid.colOf(vcIndex);
-      if (row === undefined || !vc || vc.kind !== "sheet") return null;
+      if (row === undefined || !vc) return null;
       return { label: d.rowLabel(row), occurrence: occurrence(d, row), row, header: d.colHeader(vc.col), col: vc.col };
     };
     const s = this.grid.sel;
     const active = point(s.row, s.col);
     if (!active) return null;
     return { active, other: point(s.row2, s.col2) ?? active, offset: this.grid.rowScreenOffset(s.row), left: this.grid.scrollPos.left };
-  }
-
-  /** Where a quarter hidden inside a collapsed year now shows: the year's own column. */
-  yearColumn(col: number): number | undefined {
-    const g = this.groups.find((g) => g.quarters.includes(col));
-    if (!g) return undefined;
-    if (g.annual !== null) return this.grid.viewColOf(g.annual);
-    const i = this.grid.viewCols.findIndex((vc) => vc.kind === "derived" && vc.group.year === g.year);
-    return i >= 0 ? i : undefined;
   }
 
   restore(a: Anchor) {
@@ -375,7 +354,7 @@ export class App {
           }
         }
       }
-      return [this.grid.viewRowOf(row) ?? 0, this.grid.viewColOf(col) ?? this.yearColumn(col) ?? 0];
+      return [this.grid.viewRowOf(row) ?? 0, this.grid.viewColOf(col) ?? 0];
     };
     const [r, c] = find(a.active);
     const [r2, c2] = find(a.other);
@@ -432,29 +411,10 @@ export class App {
     this.grid.focus();
   }
 
-  toggleYear(year: number) {
-    const d = this.data;
-    if (!d) return;
-    const set = this.collapsed.get(d.meta.name)!;
-    if (set.has(year)) set.delete(year);
-    else set.add(year);
-    this.relayout();
-  }
-
-  setLevel(years: boolean) {
-    const d = this.data;
-    if (!d || !this.groups.length) return;
-    const set = this.collapsed.get(d.meta.name)!;
-    set.clear();
-    if (years) this.groups.forEach((g) => set.add(g.year));
-    this.relayout();
-  }
-
   relayout() {
     const d = this.data!;
     const anchor = this.anchor();
-    const collapsed = this.collapsed.get(d.meta.name)!;
-    this.grid.setSheet(d, this.info!.styles, this.groups, collapsed, buildViewCols(d.meta, this.groups, collapsed));
+    this.grid.setSheet(d, this.info!.styles);
     if (anchor) this.restore(anchor);
     this.remember();
     this.renderAll();
@@ -546,17 +506,7 @@ export class App {
   }
 
   goToChange(ch: CellChange) {
-    let vc = this.grid.viewColOf(ch.c);
-    if (vc === undefined) {
-      // Hidden in a collapsed year: open it.
-      const g = this.groups.find((g) => g.quarters.includes(ch.c));
-      if (g) {
-        this.collapsed.get(this.data!.meta.name)!.delete(g.year);
-        this.relayout();
-        toast(`Expanded ${g.year} to show the change`, "info", { label: "Collapse", run: () => this.toggleYear(g.year) });
-        vc = this.grid.viewColOf(ch.c);
-      }
-    }
+    const vc = this.grid.viewColOf(ch.c);
     const vr = this.grid.viewRowOf(ch.r);
     if (vr === undefined || vc === undefined) return;
     this.grid.reveal(vr, vc);
@@ -565,7 +515,7 @@ export class App {
 
   currentCol(): number | undefined {
     const vc = this.grid.colOf(this.grid.sel.col);
-    return vc?.kind === "sheet" ? vc.col : undefined;
+    return vc?.col;
   }
 
   async jumpTo(sheetIndex: number, r: number, c: number, record = true) {
@@ -573,15 +523,7 @@ export class App {
     if (sheetIndex !== this.sheetIndex) {
       await this.loadSheet(sheetIndex);
     }
-    let vc = this.grid.viewColOf(c);
-    if (vc === undefined) {
-      const g = this.groups.find((g) => g.quarters.includes(c));
-      if (g) {
-        this.collapsed.get(this.data!.meta.name)!.delete(g.year);
-        this.relayout();
-        vc = this.grid.viewColOf(c);
-      }
-    }
+    const vc = this.grid.viewColOf(c);
     const vr = this.grid.viewRowOf(r);
     if (vr === undefined || vc === undefined) return;
     this.grid.reveal(vr, vc);
@@ -603,7 +545,7 @@ export class App {
       const line: { r: number; c: number }[] = [];
       for (let ci = Math.min(s.col, s.col2); ci <= Math.max(s.col, s.col2); ci++) {
         const vc = this.grid.colOf(ci);
-        if (vc?.kind === "sheet") line.push({ r: this.grid.rowOf(ri), c: vc.col });
+        if (vc) line.push({ r: this.grid.rowOf(ri), c: vc.col });
       }
       rows.push(line);
     }
@@ -683,7 +625,7 @@ export class App {
     const c = this.currentCol();
     const version = this.displayed;
     if (!d || version === null || c === undefined) {
-      // A derived column or nothing selected: nothing to look up.
+      // Nothing selected: nothing to look up.
       this.inspection = { inputs: [], usedBy: [] };
       this.renderPanel();
       return;
@@ -812,10 +754,6 @@ export class App {
     const row = this.grid.rowOf(this.grid.sel.row);
     const vc = this.grid.colOf(this.grid.sel.col);
     if (!vc) return;
-    if (vc.kind === "derived") {
-      el.innerHTML = `<span class="addr">Σ ${vc.group.year}</span><span class="what">${esc(d.rowLabel(row))} · derived annual</span><span class="formula muted">Not in the workbook: ${row === d.meta.headerRow ? "the year's quarters" : "computed from the four quarters"}</span>`;
-      return;
-    }
     const cell = d.cell(row, vc.col);
     const ch = d.change(row, vc.col);
     const label = d.rowLabel(row);
@@ -884,7 +822,7 @@ export class App {
         : "";
     const row = this.grid.rowOf(this.grid.sel.row);
     const vc = this.grid.colOf(this.grid.sel.col);
-    const addr = vc?.kind === "sheet" ? `${d.meta.name}!${colLetters(vc.col)}${row}` : d.meta.name;
+    const addr = vc ? `${d.meta.name}!${colLetters(vc.col)}${row}` : d.meta.name;
     const c = i.calc;
     const calc = !c.calculated
       ? `<span class="calc pending">Recalculating…</span>`
@@ -946,7 +884,6 @@ export class App {
     const sheetRow = t.closest<HTMLElement>("[data-sheet]");
     if (sheetRow?.classList.contains("sheetrow")) return void this.switchSheet(Number(sheetRow.dataset.sheet));
     const row = t.closest<HTMLElement>(".chrow[data-r]");
-    // jumpTo opens a collapsed year if the change is inside it.
     if (row) void this.jumpTo(this.sheetIndex, Number(row.dataset.r), Number(row.dataset.c), false);
   }
 
@@ -961,7 +898,7 @@ export class App {
     const d = this.data;
     if (row === null || col === null || !d) return void tip.classList.remove("on");
     const vc = this.grid.colOf(col);
-    if (!vc || vc.kind !== "sheet") return void tip.classList.remove("on");
+    if (!vc) return void tip.classList.remove("on");
     const r = this.grid.rowOf(row);
     const ch = d.change(r, vc.col);
     const cell = d.cell(r, vc.col);

@@ -61,7 +61,7 @@ export function inspectorHtml(app: App): string {
   const d = app.data!;
   const row = app.grid.rowOf(app.grid.sel.row);
   const vc = app.grid.colOf(app.grid.sel.col);
-  if (!vc || vc.kind !== "sheet") return `<div class="empty-note">A derived annual column is computed by Total Recalc from the four quarters; it is not in the workbook.</div>`;
+  if (!vc) return "";
   const cell = d.cell(row, vc.col);
   const ch = d.change(row, vc.col);
   const label = d.rowLabel(row);
